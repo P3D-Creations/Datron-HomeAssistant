@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Datron NEXT",
+        "description": "Enter the connection details for your Datron CNC machine.",
+        "data": {
+          "host": "Hostname or IP Address",
+          "token": "Bearer Token",
+          "port": "Port"
+        },
+        "data_description": {
+          "host": "The IP address or hostname of your Datron NEXT machine.",
+          "token": "The API bearer token for authentication. Obtain this from the DATRON NEXT control.",
+          "port": "The HTTPS port (default: 443)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the machine. Check the hostname and port.",
+      "invalid_auth": "Invalid authentication. Check your bearer token.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This machine is already configured."
+    }
+  }
+}
