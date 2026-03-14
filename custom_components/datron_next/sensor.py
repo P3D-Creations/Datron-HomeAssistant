@@ -41,13 +41,26 @@ def _safe_get(data: dict, *keys: str, default: Any = None) -> Any:
     return current
 
 
+def _get_geometry_value(tool_data: dict | None, geom_key: str, attribute: str) -> float | None:
+    """Extract a value from a tool's geometry array by attribute name."""
+    if not isinstance(tool_data, dict):
+        return None
+    geom_list = tool_data.get(geom_key)
+    if not isinstance(geom_list, list):
+        return None
+    for item in geom_list:
+        if isinstance(item, dict) and item.get("attribute") == attribute:
+            return item.get("value")
+    return None
+
+
 # ── Sensor descriptions ──────────────────────────────────────────
 
 FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
     # Machine status
     DatronSensorEntityDescription(
         key="machine_execution_state",
-        name="Machine Status",
+        name="Status",
         icon="mdi:state-machine",
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "machine_status", "executionState"),
@@ -145,7 +158,9 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         name="Compressed Air Input Pressure",
         icon="mdi:air-filter",
         device_class=SensorDeviceClass.PRESSURE,
+        native_unit_of_measurement=UnitOfPressure.BAR,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(
             d, "compressed_air", "analogSensorForCompressedAirInput", "status"
@@ -156,7 +171,9 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         name="Clamping Device Pressure",
         icon="mdi:hydraulic-oil-level",
         device_class=SensorDeviceClass.PRESSURE,
+        native_unit_of_measurement=UnitOfPressure.BAR,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(
             d, "compressed_air", "analogSensorForClampingDevice", "status"
@@ -168,7 +185,9 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         name="Vacuum Pressure",
         icon="mdi:vacuum",
         device_class=SensorDeviceClass.PRESSURE,
+        native_unit_of_measurement=UnitOfPressure.BAR,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "vacuum", "analogSensor", "status"),
     ),
@@ -288,13 +307,35 @@ MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         name="Tool in Spindle",
         icon="mdi:screw-machine-flat-top",
         coordinator_key=COORD_MEDIUM,
-        value_fn=lambda d: _safe_get(d, "tool_spindle", "name"),
+        value_fn=lambda d: (
+            f"T{_safe_get(d, 'tool_spindle', 'toolNumber', default='?')} \u2014 "
+            f"{_safe_get(d, 'tool_spindle', 'name', default='Unknown')}"
+            if _safe_get(d, "tool_spindle") else "Empty"
+        ),
         attributes_fn=lambda d: {
             "tool_number": _safe_get(d, "tool_spindle", "toolNumber"),
             "article_number": _safe_get(d, "tool_spindle", "articleNumber"),
+            "description": _safe_get(d, "tool_spindle", "description"),
             "category": _safe_get(d, "tool_spindle", "category"),
             "vendor": _safe_get(d, "tool_spindle", "vendor"),
+            "holder_type": _safe_get(d, "tool_spindle", "holderType"),
             "comment": _safe_get(d, "tool_spindle", "comment"),
+            "flute_length_mm": (
+                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "FluteLength")
+                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "FluteLength")
+            ),
+            "overall_length_mm": (
+                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "OverallLength")
+                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "OverallLength")
+            ),
+            "diameter_mm": (
+                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "Diameter")
+                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "Diameter")
+            ),
+            "number_of_flutes": (
+                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "NumberOfFlutes")
+                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "NumberOfFlutes")
+            ),
             "current_life_minutes": _safe_get(d, "tool_spindle", "currentTotalLife"),
             "max_life_minutes": _safe_get(d, "tool_spindle", "maxToolLife"),
             "current_path_mm": _safe_get(d, "tool_spindle", "currentTotalPath"),

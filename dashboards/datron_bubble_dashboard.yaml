@@ -1,0 +1,353 @@
+# ============================================================================
+# Datron NEXT — Bubble Card Dashboard
+# ============================================================================
+#
+# SETUP INSTRUCTIONS:
+#
+# 1. Install from HACS:
+#    - Bubble Card (required)
+#    - card-mod (for CSS styling on image cards)
+#
+# 2. Upload your machine image:
+#    Place an image of your M8Cube at:
+#      /config/www/images/datron_m8cube.png
+#    (Create the folders if needed. Accessible as /local/images/datron_m8cube.png)
+#
+# 3. Add this dashboard:
+#    Settings → Dashboards → Add Dashboard → paste this YAML in raw editor.
+#
+# ============================================================================
+
+title: Datron CNC
+views:
+  - title: Machine
+    path: machine
+    type: panel
+    cards:
+      - type: vertical-stack
+        cards:
+
+          # ════════════════════════════════════════════════════════════════
+          # TOP: Notifications & Errors
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Notifications & Errors
+            icon: mdi:bell-alert
+
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_latest_notification
+            name: Latest Notification
+            icon: mdi:bell
+            show_state: true
+            card_layout: large
+            styles: |
+              {% set ntype = state_attr('sensor.datron_m8cube_1804685_latest_notification', 'type') %}
+              {% if ntype == 'Error' %}{% set bg = 'rgba(244, 67, 54, 0.15)' %}
+              {% elif ntype == 'Warning' %}{% set bg = 'rgba(255, 193, 7, 0.15)' %}
+              {% else %}{% set bg = 'rgba(158, 158, 158, 0.08)' %}{% endif %}
+              .bubble-button-card-container {
+                background: {{ bg }} !important;
+              }
+            sub_button:
+              - entity: sensor.datron_m8cube_1804685_latest_error
+                icon: mdi:alert-circle
+                show_state: true
+
+          # ════════════════════════════════════════════════════════════════
+          # MACHINE STATUS
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Machine Status
+            icon: mdi:state-machine
+
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_machine_execution_state
+            name: Status
+            icon: mdi:state-machine
+            show_state: true
+            show_last_changed: true
+            card_layout: large
+            styles: |
+              {% set state = states('sensor.datron_m8cube_1804685_machine_execution_state') %}
+              {% if state == 'Running' %}{% set bg = 'rgba(76, 175, 80, 0.2)' %}
+              {% elif state == 'Idle' %}{% set bg = 'rgba(33, 150, 243, 0.15)' %}
+              {% elif state == 'Pause' %}{% set bg = 'rgba(255, 193, 7, 0.2)' %}
+              {% elif state in ['Aborting', 'Aborted'] %}{% set bg = 'rgba(244, 67, 54, 0.2)' %}
+              {% elif state == 'WaitingForUserInput' %}{% set bg = 'rgba(255, 152, 0, 0.25)' %}
+              {% else %}{% set bg = 'rgba(158, 158, 158, 0.15)' %}{% endif %}
+              .bubble-button-card-container {
+                background: {{ bg }} !important;
+              }
+            sub_button:
+              - entity: sensor.datron_m8cube_1804685_current_program
+                icon: mdi:file-code
+                show_state: true
+              - entity: sensor.datron_m8cube_1804685_feed_override_cutting
+                icon: mdi:speedometer
+                show_state: true
+
+          # ════════════════════════════════════════════════════════════════
+          # JOB PROGRESS
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Job Progress
+            icon: mdi:progress-clock
+
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_job_progress
+            name: Program Progress
+            icon: mdi:progress-clock
+            show_state: true
+            card_layout: large
+            styles: |
+              {% set progress = states('sensor.datron_m8cube_1804685_job_progress') | float(0) %}
+              {% if progress < 0 %}{% set progress = 0 %}{% elif progress > 100 %}{% set progress = 100 %}{% endif %}
+              {% if is_state('binary_sensor.datron_m8cube_1804685_microjet_tank1_empty', 'on') %}
+              {% set r = 255 %}{% set g = 193 %}{% set b = 7 %}
+              {% else %}
+              {% set r = state_attr('sensor.datron_m8cube_1804685_status_light', 'red') | default(100) | int %}
+              {% set g = state_attr('sensor.datron_m8cube_1804685_status_light', 'green') | default(100) | int %}
+              {% set b = state_attr('sensor.datron_m8cube_1804685_status_light', 'blue') | default(100) | int %}
+              {% endif %}
+              .bubble-button-card-container {
+                background: linear-gradient(to right, rgba({{ r }}, {{ g }}, {{ b }}, 0.4) 0%, rgba({{ r }}, {{ g }}, {{ b }}, 0.4) {{ progress }}%, rgba(var(--rgb-primary-text-color), 0.06) {{ progress }}%, rgba(var(--rgb-primary-text-color), 0.06) 100%) !important;
+              }
+
+          - type: horizontal-stack
+            cards:
+              - type: custom:bubble-card
+                card_type: button
+                entity: sensor.datron_m8cube_1804685_job_elapsed_time
+                name: Elapsed
+                icon: mdi:timer-outline
+                show_state: true
+              - type: custom:bubble-card
+                card_type: button
+                entity: sensor.datron_m8cube_1804685_job_remaining_time
+                name: Remaining
+                icon: mdi:timer-sand
+                show_state: true
+
+          # ════════════════════════════════════════════════════════════════
+          # WORKPIECE PREVIEW IMAGE
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Workpiece Preview
+            icon: mdi:image
+
+          - type: image
+            image_entity: image.datron_m8cube_1804685_program_preview_image
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 16px;
+                  overflow: hidden;
+                }
+                ha-card img {
+                  max-height: 300px;
+                  width: 100%;
+                  object-fit: contain;
+                }
+
+          # ════════════════════════════════════════════════════════════════
+          # MACHINE IMAGE
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: ""
+
+          - type: picture
+            image: /local/images/datron_m8cube.png
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 16px;
+                  overflow: hidden;
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                  max-height: 300px;
+                }
+                ha-card img {
+                  max-height: 300px;
+                  width: 100%;
+                  object-fit: contain;
+                }
+
+          # ════════════════════════════════════════════════════════════════
+          # SENSORS (with progress bar fills)
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Sensors
+            icon: mdi:gauge
+
+          # Air Pressure — range 5.25–8.6 bar, red under 6
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_compressed_air_input
+            name: Air Pressure
+            icon: mdi:air-filter
+            show_state: true
+            card_layout: large
+            styles: |
+              {% set val = states('sensor.datron_m8cube_1804685_compressed_air_input') | float(0) %}
+              {% set pct = ((val - 5.25) / 3.35 * 100) %}
+              {% if pct < 0 %}{% set pct = 0 %}{% elif pct > 100 %}{% set pct = 100 %}{% endif %}
+              {% if val < 6 %}{% set color = '244, 67, 54' %}
+              {% else %}{% set color = '76, 175, 80' %}{% endif %}
+              .bubble-button-card-container {
+                background: linear-gradient(to right, rgba({{ color }}, 0.35) 0%, rgba({{ color }}, 0.35) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) 100%) !important;
+              }
+
+          # Clamp Pressure — range 6.5–7.5 bar
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_clamping_device_pressure
+            name: Clamp Pressure
+            icon: mdi:hydraulic-oil-level
+            show_state: true
+            card_layout: large
+            styles: |
+              {% set val = states('sensor.datron_m8cube_1804685_clamping_device_pressure') | float(0) %}
+              {% set pct = ((val - 6.5) / 1.0 * 100) %}
+              {% if pct < 0 %}{% set pct = 0 %}{% elif pct > 100 %}{% set pct = 100 %}{% endif %}
+              .bubble-button-card-container {
+                background: linear-gradient(to right, rgba(76, 175, 80, 0.35) 0%, rgba(76, 175, 80, 0.35) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) 100%) !important;
+              }
+
+          # Vacuum — range 0 to -1 bar, closer to -1 = more full
+          # Yellow under |0.65|, red under |0.57|
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_vacuum_pressure
+            name: Vacuum
+            icon: mdi:vacuum
+            show_state: true
+            card_layout: large
+            styles: |
+              {% set val = states('sensor.datron_m8cube_1804685_vacuum_pressure') | float(0) | abs %}
+              {% set pct = (val * 100) %}
+              {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+              {% if val < 0.57 %}{% set color = '244, 67, 54' %}
+              {% elif val < 0.65 %}{% set color = '255, 193, 7' %}
+              {% else %}{% set color = '76, 175, 80' %}{% endif %}
+              .bubble-button-card-container {
+                background: linear-gradient(to right, rgba({{ color }}, 0.35) 0%, rgba({{ color }}, 0.35) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) 100%) !important;
+              }
+
+          # Positioning — red 0-5%, yellow under 95%, max 150%
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_feed_override_positioning
+            name: Positioning %
+            icon: mdi:speedometer
+            show_state: true
+            card_layout: large
+            styles: |
+              {% set val = states('sensor.datron_m8cube_1804685_feed_override_positioning') | float(0) %}
+              {% set pct = (val / 150 * 100) %}
+              {% if pct < 0 %}{% set pct = 0 %}{% elif pct > 100 %}{% set pct = 100 %}{% endif %}
+              {% if val <= 5 %}{% set color = '244, 67, 54' %}
+              {% elif val < 95 %}{% set color = '255, 193, 7' %}
+              {% else %}{% set color = '76, 175, 80' %}{% endif %}
+              .bubble-button-card-container {
+                background: linear-gradient(to right, rgba({{ color }}, 0.35) 0%, rgba({{ color }}, 0.35) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) {{ pct }}%, rgba(var(--rgb-primary-text-color), 0.06) 100%) !important;
+              }
+
+          # ════════════════════════════════════════════════════════════════
+          # COOLANT
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Coolant
+            icon: mdi:cup-water
+
+          - type: custom:bubble-card
+            card_type: button
+            entity: binary_sensor.datron_m8cube_1804685_microjet_tank1_empty
+            name: Microjet 1
+            icon: mdi:cup-water
+            show_state: true
+            styles: |
+              {% if is_state('binary_sensor.datron_m8cube_1804685_microjet_tank1_empty', 'on') %}
+              {% set bg = 'rgba(244, 67, 54, 0.2)' %}
+              {% else %}{% set bg = 'rgba(76, 175, 80, 0.1)' %}{% endif %}
+              .bubble-button-card-container {
+                background: {{ bg }} !important;
+              }
+
+          # ════════════════════════════════════════════════════════════════
+          # TOOLING
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Tooling
+            icon: mdi:toolbox
+
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_tool_in_spindle
+            name: Tool in Spindle
+            icon: mdi:screw-machine-flat-top
+            show_state: true
+            card_layout: large
+            sub_button:
+              - entity: sensor.datron_m8cube_1804685_tools_in_changer_count
+                icon: mdi:toolbox
+                show_state: true
+              - entity: sensor.datron_m8cube_1804685_tools_in_warehouse_count
+                icon: mdi:warehouse
+                show_state: true
+
+          - type: markdown
+            content: |
+              {% set t = 'sensor.datron_m8cube_1804685_tool_in_spindle' %}
+              {% if states(t) not in ['Empty', 'unknown', 'unavailable'] %}
+              **T{{ state_attr(t, 'tool_number') }}** {{ state_attr(t, 'article_number') or '' }} · Flute: {{ state_attr(t, 'flute_length_mm') | round(2) if state_attr(t, 'flute_length_mm') is not none else '—' }} mm · Length: {{ state_attr(t, 'overall_length_mm') | round(2) if state_attr(t, 'overall_length_mm') is not none else '—' }} mm · Ø {{ state_attr(t, 'diameter_mm') | round(2) if state_attr(t, 'diameter_mm') is not none else '—' }} mm
+              {% else %}
+              *No tool loaded*
+              {% endif %}
+
+          # ════════════════════════════════════════════════════════════════
+          # MACHINE INFO
+          # ════════════════════════════════════════════════════════════════
+          - type: custom:bubble-card
+            card_type: separator
+            name: Machine Info
+            icon: mdi:information-outline
+
+          - type: custom:bubble-card
+            card_type: button
+            entity: sensor.datron_m8cube_1804685_machine_type
+            name: Machine
+            icon: mdi:factory
+            show_state: true
+            card_layout: large
+            sub_button:
+              - entity: sensor.datron_m8cube_1804685_machine_number
+                icon: mdi:identifier
+                show_state: true
+              - entity: sensor.datron_m8cube_1804685_software_version
+                icon: mdi:information-outline
+                show_state: true
+
+          - type: horizontal-stack
+            cards:
+              - type: custom:bubble-card
+                card_type: button
+                entity: sensor.datron_m8cube_1804685_spindle_runtime
+                name: Spindle Hours
+                icon: mdi:engine
+                show_state: true
+              - type: custom:bubble-card
+                card_type: button
+                entity: sensor.datron_m8cube_1804685_machine_runtime
+                name: Machine Hours
+                icon: mdi:clock-outline
+                show_state: true

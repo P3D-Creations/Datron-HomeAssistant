@@ -58,9 +58,12 @@ BINARY_SENSORS: tuple[DatronBinarySensorEntityDescription, ...] = (
         icon="mdi:alert-circle",
         device_class=BinarySensorDeviceClass.PROBLEM,
         coordinator_key=COORD_FAST,
-        value_fn=lambda d: any(
-            isinstance(n, dict) and n.get("type") == "Error"
-            for n in (_safe_get(d, "notifications", default=[]) or [])
+        value_fn=lambda d: (
+            any(
+                isinstance(n, dict) and n.get("type") == "Error"
+                for n in (_safe_get(d, "notifications", default=[]) or [])
+            )
+            or _safe_get(d, "spray_system", "microjet", "tank1IsEmpty", "status") is True
         ),
     ),
     # Compressed air input OK (digital sensor)

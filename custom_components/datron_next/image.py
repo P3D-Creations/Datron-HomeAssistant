@@ -29,8 +29,8 @@ async def async_setup_entry(
     client: DatronApiClient = data["client"]
 
     entities: list[ImageEntity] = [
-        DatronWorkpieceImage(entry=entry, client=client),
-        DatronPreviewImage(entry=entry, client=client),
+        DatronWorkpieceImage(hass=hass, entry=entry, client=client),
+        DatronPreviewImage(hass=hass, entry=entry, client=client),
     ]
     async_add_entities(entities)
 
@@ -41,9 +41,9 @@ class DatronWorkpieceImage(ImageEntity):
     _attr_has_entity_name = True
     _attr_name = "Workpiece Image"
 
-    def __init__(self, entry: ConfigEntry, client: DatronApiClient) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: DatronApiClient) -> None:
         """Initialize the workpiece image entity."""
-        super().__init__(entry.data.get("hass") or None)  # type: ignore[arg-type]
+        super().__init__(hass)
         self._client = client
         self._attr_unique_id = f"{entry.entry_id}_workpiece_image"
         self._attr_device_info = DeviceInfo(
@@ -75,9 +75,9 @@ class DatronPreviewImage(ImageEntity):
     _attr_has_entity_name = True
     _attr_name = "Program Preview Image"
 
-    def __init__(self, entry: ConfigEntry, client: DatronApiClient) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: DatronApiClient) -> None:
         """Initialize the preview image entity."""
-        super().__init__(entry.data.get("hass") or None)  # type: ignore[arg-type]
+        super().__init__(hass)
         self._client = client
         self._attr_unique_id = f"{entry.entry_id}_preview_image"
         self._attr_device_info = DeviceInfo(
