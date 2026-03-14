@@ -1,5 +1,9 @@
 # Datron NEXT Home Assistant Integration
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![GitHub Release](https://img.shields.io/github/release/P3D-Creations/datron-homeassistant.svg)](https://github.com/P3D-Creations/datron-homeassistant/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A custom Home Assistant integration for monitoring and controlling Datron CNC milling machines via the DATRON NEXT REST API.
 
 ## Overview
@@ -26,10 +30,13 @@ This integration connects Home Assistant to a Datron M8Cube (or compatible) CNC 
 ## Installation
 
 ### HACS (Recommended)
-1. Add this repository as a custom repository in HACS
-2. Search for "Datron NEXT" and install
-3. Restart Home Assistant
-4. Add the integration via Settings → Devices & Services → Add Integration
+1. Open HACS in your Home Assistant instance
+2. Click the three dots in the top right corner → **Custom repositories**
+3. Add `https://github.com/P3D-Creations/datron-homeassistant` with category **Integration**
+4. Click **Add**
+5. Search for "Datron NEXT" in HACS and click **Download**
+6. Restart Home Assistant
+7. Go to Settings → Devices & Services → **Add Integration** → search "Datron NEXT"
 
 ### Manual
 1. Copy the `custom_components/datron_next` folder to your Home Assistant `config/custom_components/` directory
