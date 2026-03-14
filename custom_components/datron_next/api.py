@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -12,6 +13,10 @@ from .const import API_VERSION
 _LOGGER = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
+
+# Datron's embedded HTTP server can only handle a small number of
+# concurrent connections. We serialise all requests through a semaphore.
+MAX_CONCURRENT_REQUESTS = 2
 
 
 class DatronApiError(Exception):
@@ -38,6 +43,7 @@ class DatronApiClient:
         self._token = token
         self._session = session
         self._base_url = f"http://{host}:{port}/api/v{API_VERSION}"
+        self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
     def set_session(self, session: aiohttp.ClientSession) -> None:
         """Set the aiohttp session."""
@@ -54,36 +60,37 @@ class DatronApiClient:
     async def _request(
         self, method: str, path: str, **kwargs: Any
     ) -> Any:
-        """Make an API request."""
+        """Make an API request (serialised through semaphore)."""
         if self._session is None:
             raise DatronApiError("No aiohttp session configured")
 
         url = f"{self._base_url}{path}"
         _LOGGER.debug("API request: %s %s", method, url)
-        try:
-            async with self._session.request(
-                method, url, headers=self._headers, timeout=REQUEST_TIMEOUT, **kwargs
-            ) as resp:
-                if resp.status == 401:
-                    raise DatronAuthError("Authentication failed — invalid or expired token")
-                if resp.status == 403:
-                    raise DatronAuthError("Forbidden — insufficient API license tier")
-                if resp.status >= 400:
-                    text = await resp.text()
-                    raise DatronApiError(
-                        f"API error {resp.status} for {path}: {text}"
-                    )
-                # Some endpoints may return empty body
-                if resp.content_length == 0:
-                    return None
-                content_type = resp.headers.get("Content-Type", "")
-                if "json" in content_type or "text/plain" in content_type:
-                    return await resp.json(content_type=None)
-                return await resp.read()
-        except aiohttp.ClientError as err:
-            raise DatronApiError(f"Connection error for {path}: {err}") from err
-        except TimeoutError as err:
-            raise DatronApiError(f"Timeout requesting {path}") from err
+        async with self._semaphore:
+            try:
+                async with self._session.request(
+                    method, url, headers=self._headers, timeout=REQUEST_TIMEOUT, **kwargs
+                ) as resp:
+                    if resp.status == 401:
+                        raise DatronAuthError("Authentication failed — invalid or expired token")
+                    if resp.status == 403:
+                        raise DatronAuthError("Forbidden — insufficient API license tier")
+                    if resp.status >= 400:
+                        text = await resp.text()
+                        raise DatronApiError(
+                            f"API error {resp.status} for {path}: {text}"
+                        )
+                    # Some endpoints may return empty body
+                    if resp.content_length == 0:
+                        return None
+                    content_type = resp.headers.get("Content-Type", "")
+                    if "json" in content_type or "text/plain" in content_type:
+                        return await resp.json(content_type=None)
+                    return await resp.read()
+            except aiohttp.ClientError as err:
+                raise DatronApiError(f"Connection error for {path}: {err}") from err
+            except TimeoutError as err:
+                raise DatronApiError(f"Timeout requesting {path}") from err
 
     async def _get(self, path: str, **kwargs: Any) -> Any:
         """HTTP GET request."""

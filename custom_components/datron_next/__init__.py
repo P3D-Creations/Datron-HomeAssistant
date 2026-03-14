@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 
+import aiohttp
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import DatronApiClient
 from .const import CONF_TOKEN, COORD_FAST, COORD_MEDIUM, COORD_SLOW, DEFAULT_PORT, DOMAIN
@@ -35,7 +36,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
     token = entry.data[CONF_TOKEN]
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
 
-    session = async_get_clientsession(hass)
+    # Create a dedicated aiohttp session for the Datron machine.
+    # The embedded HTTP server has very limited connection capacity,
+    # so we restrict to 2 simultaneous TCP connections to this host.
+    connector = aiohttp.TCPConnector(limit_per_host=2, force_close=True)
+    session = aiohttp.ClientSession(connector=connector)
     client = DatronApiClient(host=host, token=token, port=port, session=session)
 
     # Create coordinators
@@ -52,6 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "client": client,
+        "session": session,
         COORD_FAST: fast_coordinator,
         COORD_MEDIUM: medium_coordinator,
         COORD_SLOW: slow_coordinator,
@@ -65,7 +71,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
 async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+        data = hass.data[DOMAIN].pop(entry.entry_id)
+        # Close the dedicated aiohttp session
+        session: aiohttp.ClientSession | None = data.get("session")
+        if session and not session.closed:
+            await session.close()
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
 
