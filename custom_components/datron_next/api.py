@@ -16,7 +16,7 @@ REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 # Datron's embedded HTTP server can only handle a small number of
 # concurrent connections. We serialise all requests through a semaphore.
-MAX_CONCURRENT_REQUESTS = 2
+MAX_CONCURRENT_REQUESTS = 1
 
 
 class DatronApiError(Exception):
