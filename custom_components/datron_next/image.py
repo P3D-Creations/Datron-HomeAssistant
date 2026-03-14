@@ -52,7 +52,7 @@ class DatronWorkpieceImage(ImageEntity):
             manufacturer="Datron",
             model="M8Cube",
             sw_version="NEXT",
-            configuration_url=f"https://{entry.data[CONF_HOST]}",
+            configuration_url=f"http://{entry.data[CONF_HOST]}",
         )
         self._cached_image: bytes | None = None
 
@@ -86,7 +86,7 @@ class DatronPreviewImage(ImageEntity):
             manufacturer="Datron",
             model="M8Cube",
             sw_version="NEXT",
-            configuration_url=f"https://{entry.data[CONF_HOST]}",
+            configuration_url=f"http://{entry.data[CONF_HOST]}",
         )
         self._cached_image: bytes | None = None
 

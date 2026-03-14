@@ -27,7 +27,7 @@ class DatronApiClient:
         self,
         host: str,
         token: str,
-        port: int = 443,
+        port: int = 80,
         session: aiohttp.ClientSession | None = None,
     ) -> None:
         """Initialize the API client."""
@@ -35,7 +35,7 @@ class DatronApiClient:
         self._port = port
         self._token = token
         self._session = session
-        self._base_url = f"https://{host}:{port}/api/v{API_VERSION}"
+        self._base_url = f"http://{host}:{port}/api/v{API_VERSION}"
 
     def set_session(self, session: aiohttp.ClientSession) -> None:
         """Set the aiohttp session."""
@@ -59,7 +59,7 @@ class DatronApiClient:
         url = f"{self._base_url}{path}"
         try:
             async with self._session.request(
-                method, url, headers=self._headers, ssl=False, **kwargs
+                method, url, headers=self._headers, **kwargs
             ) as resp:
                 if resp.status == 401:
                     raise DatronAuthError("Authentication failed — invalid or expired token")

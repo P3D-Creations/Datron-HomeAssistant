@@ -35,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
     token = entry.data[CONF_TOKEN]
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
 
-    session = async_get_clientsession(hass, verify_ssl=False)
+    session = async_get_clientsession(hass)
     client = DatronApiClient(host=host, token=token, port=port, session=session)
 
     # Create coordinators

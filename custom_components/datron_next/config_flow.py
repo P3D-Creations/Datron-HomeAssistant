@@ -47,7 +47,7 @@ class DatronNextConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             # Test the connection
-            session = async_create_clientsession(self.hass, verify_ssl=False)
+            session = async_create_clientsession(self.hass)
             client = DatronApiClient(host=host, token=token, port=port, session=session)
 
             try:

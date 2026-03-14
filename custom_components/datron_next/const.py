@@ -6,7 +6,7 @@ CONF_HOST = "host"
 CONF_TOKEN = "token"
 CONF_PORT = "port"
 
-DEFAULT_PORT = 443
+DEFAULT_PORT = 80
 API_VERSION = "2"
 
 # Polling intervals in seconds

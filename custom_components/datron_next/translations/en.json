@@ -12,7 +12,7 @@
         "data_description": {
           "host": "The IP address or hostname of your Datron NEXT machine.",
           "token": "The API bearer token for authentication. Obtain this from the DATRON NEXT control.",
-          "port": "The HTTPS port (default: 443)."
+          "port": "The HTTP port (default: 80)."
         }
       }
     },

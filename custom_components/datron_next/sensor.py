@@ -424,7 +424,7 @@ class DatronSensor(CoordinatorEntity, SensorEntity):
             manufacturer="Datron",
             model="M8Cube",
             sw_version="NEXT",
-            configuration_url=f"https://{entry.data[CONF_HOST]}",
+            configuration_url=f"http://{entry.data[CONF_HOST]}",
         )
 
     @property
