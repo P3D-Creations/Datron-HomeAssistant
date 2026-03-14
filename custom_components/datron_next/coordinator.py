@@ -67,6 +67,18 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     data[key] = self.data.get(key) if self.data else None
                 else:
                     data[key] = result
+
+            # Log raw response structure on first successful fetch
+            if not self.data:
+                for key in keys:
+                    val = data.get(key)
+                    if isinstance(val, dict):
+                        _LOGGER.debug("FAST %s keys: %s", key, list(val.keys()))
+                    elif isinstance(val, list):
+                        _LOGGER.debug("FAST %s: list[%d]", key, len(val))
+                    else:
+                        _LOGGER.debug("FAST %s: %s (%s)", key, val, type(val).__name__)
+
             return data
         except DatronAuthError as err:
             raise UpdateFailed(f"Authentication error: {err}") from err
@@ -111,6 +123,18 @@ class DatronMediumCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     data[key] = self.data.get(key) if self.data else None
                 else:
                     data[key] = result
+
+            # Log raw response structure on first successful fetch
+            if not self.data:
+                for key in keys:
+                    val = data.get(key)
+                    if isinstance(val, dict):
+                        _LOGGER.debug("MEDIUM %s keys: %s", key, list(val.keys()))
+                    elif isinstance(val, list):
+                        _LOGGER.debug("MEDIUM %s: list[%d]", key, len(val))
+                    else:
+                        _LOGGER.debug("MEDIUM %s: %s (%s)", key, val, type(val).__name__)
+
             return data
         except DatronAuthError as err:
             raise UpdateFailed(f"Authentication error: {err}") from err
@@ -159,6 +183,18 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     data[key] = self.data.get(key) if self.data else None
                 else:
                     data[key] = result
+
+            # Log raw response structure on first successful fetch
+            if not self.data:
+                for key in keys:
+                    val = data.get(key)
+                    if isinstance(val, dict):
+                        _LOGGER.debug("SLOW %s keys: %s", key, list(val.keys()))
+                    elif isinstance(val, list):
+                        _LOGGER.debug("SLOW %s: list[%d]", key, len(val))
+                    else:
+                        _LOGGER.debug("SLOW %s: %s (%s)", key, val, type(val).__name__)
+
             return data
         except DatronAuthError as err:
             raise UpdateFailed(f"Authentication error: {err}") from err
