@@ -11,6 +11,8 @@ from .const import API_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
+
 
 class DatronApiError(Exception):
     """Exception for Datron API errors."""
@@ -57,9 +59,10 @@ class DatronApiClient:
             raise DatronApiError("No aiohttp session configured")
 
         url = f"{self._base_url}{path}"
+        _LOGGER.debug("API request: %s %s", method, url)
         try:
             async with self._session.request(
-                method, url, headers=self._headers, **kwargs
+                method, url, headers=self._headers, timeout=REQUEST_TIMEOUT, **kwargs
             ) as resp:
                 if resp.status == 401:
                     raise DatronAuthError("Authentication failed — invalid or expired token")
@@ -78,7 +81,9 @@ class DatronApiClient:
                     return await resp.json(content_type=None)
                 return await resp.read()
         except aiohttp.ClientError as err:
-            raise DatronApiError(f"Connection error: {err}") from err
+            raise DatronApiError(f"Connection error for {path}: {err}") from err
+        except TimeoutError as err:
+            raise DatronApiError(f"Timeout requesting {path}") from err
 
     async def _get(self, path: str, **kwargs: Any) -> Any:
         """HTTP GET request."""

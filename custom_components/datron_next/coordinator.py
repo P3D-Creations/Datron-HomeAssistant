@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -39,27 +40,34 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch fast-polling data from the API."""
         try:
-            machine_status = await self.client.get_machine_status()
-            execution = await self.client.get_execution_durations()
-            axes = await self.client.get_axis_positions()
-            air = await self.client.get_compressed_air()
-            vacuum = await self.client.get_vacuum()
-            spray = await self.client.get_spray_system()
-            feed = await self.client.get_feed_override()
-            light = await self.client.get_status_light()
-            notifications = await self.client.get_notifications()
+            results = await asyncio.gather(
+                self.client.get_machine_status(),
+                self.client.get_execution_durations(),
+                self.client.get_axis_positions(),
+                self.client.get_compressed_air(),
+                self.client.get_vacuum(),
+                self.client.get_spray_system(),
+                self.client.get_feed_override(),
+                self.client.get_status_light(),
+                self.client.get_notifications(),
+                return_exceptions=True,
+            )
 
-            return {
-                "machine_status": machine_status,
-                "execution": execution,
-                "axes": axes,
-                "compressed_air": air,
-                "vacuum": vacuum,
-                "spray_system": spray,
-                "feed_override": feed,
-                "status_light": light,
-                "notifications": notifications,
-            }
+            keys = [
+                "machine_status", "execution", "axes", "compressed_air",
+                "vacuum", "spray_system", "feed_override", "status_light",
+                "notifications",
+            ]
+            data: dict[str, Any] = {}
+            for key, result in zip(keys, results):
+                if isinstance(result, DatronAuthError):
+                    raise UpdateFailed(f"Authentication error: {result}") from result
+                if isinstance(result, Exception):
+                    _LOGGER.warning("Failed to fetch %s: %s", key, result)
+                    data[key] = self.data.get(key) if self.data else None
+                else:
+                    data[key] = result
+            return data
         except DatronAuthError as err:
             raise UpdateFailed(f"Authentication error: {err}") from err
         except DatronApiError as err:
@@ -85,17 +93,25 @@ class DatronMediumCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch medium-polling data from the API."""
         try:
-            program = await self.client.get_current_program()
-            tool_spindle = await self.client.get_tool_in_spindle()
-            tools_changer = await self.client.get_tools_in_changer()
-            tools_warehouse = await self.client.get_tools_in_warehouse()
+            results = await asyncio.gather(
+                self.client.get_current_program(),
+                self.client.get_tool_in_spindle(),
+                self.client.get_tools_in_changer(),
+                self.client.get_tools_in_warehouse(),
+                return_exceptions=True,
+            )
 
-            return {
-                "program": program,
-                "tool_spindle": tool_spindle,
-                "tools_changer": tools_changer,
-                "tools_warehouse": tools_warehouse,
-            }
+            keys = ["program", "tool_spindle", "tools_changer", "tools_warehouse"]
+            data: dict[str, Any] = {}
+            for key, result in zip(keys, results):
+                if isinstance(result, DatronAuthError):
+                    raise UpdateFailed(f"Authentication error: {result}") from result
+                if isinstance(result, Exception):
+                    _LOGGER.warning("Failed to fetch %s: %s", key, result)
+                    data[key] = self.data.get(key) if self.data else None
+                else:
+                    data[key] = result
+            return data
         except DatronAuthError as err:
             raise UpdateFailed(f"Authentication error: {err}") from err
         except DatronApiError as err:
@@ -121,19 +137,29 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch slow-polling data from the API."""
         try:
-            machine_number = await self.client.get_machine_number()
-            machine_type = await self.client.get_machine_type()
-            software_version = await self.client.get_software_version()
-            licenses = await self.client.get_licenses()
-            runtime = await self.client.get_runtime()
+            results = await asyncio.gather(
+                self.client.get_machine_number(),
+                self.client.get_machine_type(),
+                self.client.get_software_version(),
+                self.client.get_licenses(),
+                self.client.get_runtime(),
+                return_exceptions=True,
+            )
 
-            return {
-                "machine_number": machine_number,
-                "machine_type": machine_type,
-                "software_version": software_version,
-                "licenses": licenses,
-                "runtime": runtime,
-            }
+            keys = [
+                "machine_number", "machine_type", "software_version",
+                "licenses", "runtime",
+            ]
+            data: dict[str, Any] = {}
+            for key, result in zip(keys, results):
+                if isinstance(result, DatronAuthError):
+                    raise UpdateFailed(f"Authentication error: {result}") from result
+                if isinstance(result, Exception):
+                    _LOGGER.warning("Failed to fetch %s: %s", key, result)
+                    data[key] = self.data.get(key) if self.data else None
+                else:
+                    data[key] = result
+            return data
         except DatronAuthError as err:
             raise UpdateFailed(f"Authentication error: {err}") from err
         except DatronApiError as err:
