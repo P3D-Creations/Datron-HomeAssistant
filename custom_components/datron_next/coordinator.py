@@ -39,33 +39,38 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch fast-polling data from the API."""
+        import time
+        poll_start = time.monotonic()
         try:
-            results = await asyncio.gather(
-                self.client.get_machine_status(),
-                self.client.get_execution_durations(),
-                self.client.get_axis_positions(),
-                self.client.get_compressed_air(),
-                self.client.get_vacuum(),
-                self.client.get_spray_system(),
-                self.client.get_feed_override(),
-                self.client.get_status_light(),
-                self.client.get_notifications(),
-                return_exceptions=True,
-            )
-
-            keys = [
-                "machine_status", "execution", "axes", "compressed_air",
-                "vacuum", "spray_system", "feed_override", "status_light",
-                "notifications",
+            _LOGGER.debug("[COORD] Fast poll: starting all endpoints")
+            endpoints = [
+                ("machine_status", self.client.get_machine_status),
+                ("execution", self.client.get_execution_durations),
+                ("axes", self.client.get_axis_positions),
+                ("compressed_air", self.client.get_compressed_air),
+                ("vacuum", self.client.get_vacuum),
+                ("spray_system", self.client.get_spray_system),
+                ("feed_override", self.client.get_feed_override),
+                ("status_light", self.client.get_status_light),
+                ("notifications", self.client.get_notifications),
             ]
+            tasks = []
+            for key, func in endpoints:
+                _LOGGER.debug("[COORD] Fast poll: scheduling %s", key)
+                tasks.append(func())
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            keys = [k for k, _ in endpoints]
             data: dict[str, Any] = {}
             for key, result in zip(keys, results):
                 if isinstance(result, DatronAuthError):
+                    _LOGGER.error("[COORD] Fast poll: Auth error for %s: %s", key, result)
                     raise UpdateFailed(f"Authentication error: {result}") from result
                 if isinstance(result, Exception):
-                    _LOGGER.warning("Failed to fetch %s: %s", key, result)
+                    _LOGGER.warning("[COORD] Fast poll: Failed to fetch %s: %s", key, result)
                     data[key] = self.data.get(key) if self.data else None
                 else:
+                    _LOGGER.debug("[COORD] Fast poll: Success for %s", key)
                     data[key] = result
 
             # Log raw response structure on first successful fetch
@@ -79,10 +84,14 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     else:
                         _LOGGER.debug("FAST %s: %s (%s)", key, val, type(val).__name__)
 
+            elapsed = time.monotonic() - poll_start
+            _LOGGER.debug("[COORD] Fast poll: finished all endpoints in %.3fs", elapsed)
             return data
         except DatronAuthError as err:
+            _LOGGER.error("[COORD] Fast poll: Auth error: %s", err)
             raise UpdateFailed(f"Authentication error: {err}") from err
         except DatronApiError as err:
+            _LOGGER.error("[COORD] Fast poll: API error: %s", err)
             raise UpdateFailed(f"API error: {err}") from err
 
 

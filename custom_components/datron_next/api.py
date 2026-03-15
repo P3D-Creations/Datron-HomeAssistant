@@ -65,12 +65,18 @@ class DatronApiClient:
             raise DatronApiError("No aiohttp session configured")
 
         url = f"{self._base_url}{path}"
-        _LOGGER.debug("API request: %s %s", method, url)
+        _LOGGER.debug("[API] Waiting for semaphore: %s %s", method, url)
         async with self._semaphore:
+            _LOGGER.debug("[API] Acquired semaphore: %s %s", method, url)
+            import time
+            start = time.monotonic()
             try:
+                _LOGGER.debug("API request: %s %s (START)", method, url)
                 async with self._session.request(
                     method, url, headers=self._headers, timeout=REQUEST_TIMEOUT, **kwargs
                 ) as resp:
+                    elapsed = time.monotonic() - start
+                    _LOGGER.debug("API request: %s %s (RESPONSE in %.3fs)", method, url, elapsed)
                     if resp.status == 401:
                         raise DatronAuthError("Authentication failed — invalid or expired token")
                     if resp.status == 403:
@@ -88,9 +94,16 @@ class DatronApiClient:
                         return await resp.json(content_type=None)
                     return await resp.read()
             except aiohttp.ClientError as err:
+                elapsed = time.monotonic() - start
+                _LOGGER.error("[API] ClientError after %.3fs for %s %s: %s", elapsed, method, url, err)
                 raise DatronApiError(f"Connection error for {path}: {err}") from err
             except TimeoutError as err:
+                elapsed = time.monotonic() - start
+                _LOGGER.error("[API] Timeout after %.3fs for %s %s", elapsed, method, url)
                 raise DatronApiError(f"Timeout requesting {path}") from err
+            finally:
+                elapsed = time.monotonic() - start
+                _LOGGER.debug("[API] Released semaphore: %s %s (total %.3fs)", method, url, elapsed)
 
     async def _get(self, path: str, **kwargs: Any) -> Any:
         """HTTP GET request."""
