@@ -320,10 +320,15 @@ MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "vendor": _safe_get(d, "tool_spindle", "vendor"),
             "holder_type": _safe_get(d, "tool_spindle", "holderType"),
             "comment": _safe_get(d, "tool_spindle", "comment"),
+            "tool_image": _safe_get(d, "tool_spindle", "imageUrl"),
             "flute_length_mm": (
                 _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "FluteLength")
                 or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "FluteLength")
             ),
+            "tool_projection_mm": (
+                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "BodyLength")
+                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "BodyLength")
+            ),            
             "overall_length_mm": (
                 _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "OverallLength")
                 or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "OverallLength")
