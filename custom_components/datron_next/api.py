@@ -216,6 +216,41 @@ class DatronApiClient:
 
     # ── Image (public endpoints) ─────────────────────────────
 
+    async def fetch_image_url(self, url: str) -> bytes | None:
+        """Fetch image bytes from a public URL (with token in query string).
+
+        Handles both relative and absolute URLs. Does not send bearer auth –
+        the token embedded in the URL is the authentication mechanism.
+        """
+        if self._session is None:
+            raise DatronApiError("No aiohttp session configured")
+
+        # Handle relative URLs
+        if not url.startswith("http"):
+            url = f"http://{self._host}:{self._port}{url}"
+
+        _LOGGER.debug("Fetching image from URL: %s", url)
+        async with self._semaphore:
+            try:
+                async with self._session.get(
+                    url, timeout=REQUEST_TIMEOUT
+                ) as resp:
+                    if resp.status == 204:
+                        return None
+                    if resp.status >= 400:
+                        text = await resp.text()
+                        raise DatronApiError(
+                            f"Image fetch error {resp.status}: {text}"
+                        )
+                    data = await resp.read()
+                    return data if data else None
+            except aiohttp.ClientError as err:
+                raise DatronApiError(
+                    f"Image connection error: {err}"
+                ) from err
+            except TimeoutError as err:
+                raise DatronApiError("Timeout fetching image") from err
+
     async def get_camera_image(self, token: str) -> bytes | None:
         """Get camera image bytes (token-based, public endpoint)."""
         return await self._get("/Image/Camera", params={"token": token})
@@ -227,6 +262,28 @@ class DatronApiClient:
     async def get_program_preview_image(self) -> bytes | None:
         """Get simulated preview image of current program."""
         return await self._get("/Image/ProgramPreviewImage")
+
+    async def get_tool_image(
+        self,
+        token: str | None = None,
+        width: int = 400,
+        height: int = 400,
+        up_right: bool = True,
+    ) -> bytes | None:
+        """Get tool image from the public Image/Tool endpoint.
+
+        If *token* is provided it is passed as the query-string token
+        (preferred – no bearer auth needed).  Otherwise bearer auth is used.
+        """
+        params: dict[str, Any] = {
+            "widthInPixel": width,
+            "heightInPixel": height,
+            "upRight": str(up_right).lower(),
+            "withSpindle": "true",
+        }
+        if token:
+            params["token"] = token
+        return await self._get("/Image/Tool", params=params)
 
     # ── User ─────────────────────────────────────────────────
 

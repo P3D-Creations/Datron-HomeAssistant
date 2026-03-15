@@ -42,7 +42,12 @@ def _safe_get(data: dict, *keys: str, default: Any = None) -> Any:
 
 
 def _get_geometry_value(tool_data: dict | None, geom_key: str, attribute: str) -> float | None:
-    """Extract a value from a tool's geometry array by attribute name."""
+    """Extract a raw value from a tool's geometry array by attribute name.
+
+    NOTE: The Datron API returns all geometry *length* values in **microns**.
+    Use ``_get_geometry_mm`` for length attributes (Diameter, FluteLength, etc.)
+    so that the value is automatically converted to millimetres.
+    """
     if not isinstance(tool_data, dict):
         return None
     geom_list = tool_data.get(geom_key)
@@ -52,6 +57,28 @@ def _get_geometry_value(tool_data: dict | None, geom_key: str, attribute: str) -
         if isinstance(item, dict) and item.get("attribute") == attribute:
             return item.get("value")
     return None
+
+
+def _get_geometry_mm(
+    tool_data: dict | None,
+    geom_key: str,
+    attribute: str,
+    precision: int = 4,
+) -> float | None:
+    """Return a geometry length value converted from microns to millimetres.
+
+    The Datron API delivers all dimensional geometry values (Diameter,
+    FluteLength, BodyLength, OverallLength, CornerRadius, etc.) in **microns**.
+    This helper divides the raw value by 1000 and rounds to *precision*
+    decimal places (default 4 → 0.1 µm resolution).
+
+    Do **not** use this for dimensionless attributes such as NumberOfFlutes;
+    use ``_get_geometry_value`` directly for those.
+    """
+    raw = _get_geometry_value(tool_data, geom_key, attribute)
+    if raw is None:
+        return None
+    return round(raw / 1000.0, precision)
 
 
 # ── Sensor descriptions ──────────────────────────────────────────
@@ -321,22 +348,24 @@ MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "holder_type": _safe_get(d, "tool_spindle", "holderType"),
             "comment": _safe_get(d, "tool_spindle", "comment"),
             "tool_image": _safe_get(d, "tool_spindle", "imageUrl"),
+            # Geometry lengths — converted from API microns → mm
             "flute_length_mm": (
-                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "FluteLength")
-                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "FluteLength")
+                _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "FluteLength")
+                or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "FluteLength")
             ),
             "tool_projection_mm": (
-                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "BodyLength")
-                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "BodyLength")
-            ),            
+                _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "BodyLength")
+                or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "BodyLength")
+            ),
             "overall_length_mm": (
-                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "OverallLength")
-                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "OverallLength")
+                _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "OverallLength")
+                or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "OverallLength")
             ),
             "diameter_mm": (
-                _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "Diameter")
-                or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "Diameter")
+                _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "Diameter")
+                or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "Diameter")
             ),
+            # Dimensionless — no conversion needed
             "number_of_flutes": (
                 _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "NumberOfFlutes")
                 or _get_geometry_value(_safe_get(d, "tool_spindle"), "nominalGeometry", "NumberOfFlutes")
