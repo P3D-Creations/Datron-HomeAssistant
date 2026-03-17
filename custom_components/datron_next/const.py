@@ -10,9 +10,9 @@ DEFAULT_PORT = 80
 API_VERSION = "2"
 
 # Polling intervals in seconds
-SCAN_INTERVAL_FAST = 2  # Machine status, job progress, axes, sensors, notifications
-SCAN_INTERVAL_MEDIUM = 5  # Tools, program info
-SCAN_INTERVAL_SLOW = 3600  # Machine info, software version, licenses
+SCAN_INTERVAL_FAST = 4  # Machine status, job progress, axes, sensors, notifications
+SCAN_INTERVAL_MEDIUM = 6  # Tools, program info
+SCAN_INTERVAL_SLOW = 600  # Machine info, software version, licenses
 
 # Coordinator data keys
 COORD_FAST = "fast"

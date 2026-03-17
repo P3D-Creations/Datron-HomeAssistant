@@ -54,20 +54,22 @@ class DatronMachineCamera(Camera):
         self._stream_url: str | None = None
 
     async def async_camera_stream(self) -> str | None:
-        """Return the camera stream URL (RTSP or MJPEG)."""
+        """Return the camera stream URL (RTSP or MJPEG), always absolute."""
         try:
-            # Get the camera stream URL from the API
             info = await self._client.get_camera_image_url()
-            # Try common keys for the stream URL
             for key in ("url", "streamUrl", "rtspUrl", "mjpegUrl"):
                 url = info.get(key)
                 if url and isinstance(url, str):
-                    self._stream_url = url
-                    return url
-            # Fallback: try to build a URL if only a token is provided
+                    # If the URL is not absolute, prefix with machine IP
+                    if url.startswith("http://") or url.startswith("https://"):
+                        self._stream_url = url
+                        return url
+                    else:
+                        full_url = f"http://{self._client._host}:{self._client._port}{url}" if url.startswith("/") else f"http://{self._client._host}:{self._client._port}/{url}"
+                        self._stream_url = full_url
+                        return full_url
             token = info.get("token")
             if token:
-                # Example: http://host:port/api/v2.0/Image/Camera?token=...
                 url = f"http://{self._client._host}:{self._client._port}/api/v2.0/Image/Camera?token={token}"
                 self._stream_url = url
                 return url

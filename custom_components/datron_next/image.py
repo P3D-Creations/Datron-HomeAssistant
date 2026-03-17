@@ -123,6 +123,15 @@ class DatronPreviewImage(ImageEntity):
 
     async def async_image(self) -> bytes | None:
         """Return the program preview image bytes."""
+        def _make_absolute(url: str) -> str:
+            if url.startswith("http://") or url.startswith("https://"):
+                return url
+            host = getattr(self._client, "_host", None)
+            port = getattr(self._client, "_port", 80)
+            if url.startswith("/"):
+                return f"http://{host}:{port}{url}"
+            return f"http://{host}:{port}/{url}"
+
         try:
             # Primary: fetch directly with bearer auth
             image_data = await self._client.get_program_preview_image()
@@ -134,17 +143,18 @@ class DatronPreviewImage(ImageEntity):
             # Fallback: ask the API for a public token-based URL
             url_info = await self._client.get_preview_image_url()
             if isinstance(url_info, dict):
-                # The response may carry a fullName, url, or similar key
                 for key in ("url", "fullName", "imageUrl"):
                     url = url_info.get(key)
                     if url and isinstance(url, str):
-                        image_data = await self._client.fetch_image_url(url)
+                        abs_url = _make_absolute(url)
+                        image_data = await self._client.fetch_image_url(abs_url)
                         if isinstance(image_data, bytes) and len(image_data) > 0:
                             self._cached_image = image_data
                             self._attr_image_last_updated = datetime.now()
                             return image_data
             elif isinstance(url_info, str) and url_info:
-                image_data = await self._client.fetch_image_url(url_info)
+                abs_url = _make_absolute(url_info)
+                image_data = await self._client.fetch_image_url(abs_url)
                 if isinstance(image_data, bytes) and len(image_data) > 0:
                     self._cached_image = image_data
                     self._attr_image_last_updated = datetime.now()
@@ -221,14 +231,23 @@ class DatronToolImage(CoordinatorEntity, ImageEntity):
 
     async def async_image(self) -> bytes | None:
         """Return the tool image bytes."""
+        def _make_absolute(url: str) -> str:
+            if url.startswith("http://") or url.startswith("https://"):
+                return url
+            host = getattr(self._client, "_host", None)
+            port = getattr(self._client, "_port", 80)
+            if url.startswith("/"):
+                return f"http://{host}:{port}{url}"
+            return f"http://{host}:{port}/{url}"
+
         image_url = self._get_image_url()
         if not image_url:
             _LOGGER.debug("No imageUrl in tool spindle data — trying direct fetch")
             return await self._fetch_direct()
 
         try:
-            # Preferred: fetch from the public imageUrl (includes token)
-            image_data = await self._client.fetch_image_url(image_url)
+            abs_url = _make_absolute(image_url)
+            image_data = await self._client.fetch_image_url(abs_url)
             if isinstance(image_data, bytes) and len(image_data) > 0:
                 self._cached_image = image_data
                 self._last_image_url = image_url
