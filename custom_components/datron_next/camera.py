@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
@@ -32,11 +31,19 @@ async def async_setup_entry(
 
 
 class DatronMachineCamera(Camera):
-    """Camera entity for the Datron machine camera stream."""
+    """Camera entity for the Datron machine camera.
+
+    The Datron camera API works as a single-frame (snapshot) endpoint:
+      1. GET /Camera/CreateCameraImageUrl  →  {"streamId": N, "imageUrl": "/api/v2.0/Image/Camera?token=..."}
+      2. GET <absolute imageUrl>           →  JPEG image bytes
+
+    A fresh token is fetched on every snapshot request.
+    The STREAM feature is intentionally NOT advertised — this endpoint
+    is snapshot-based, not a continuous RTSP/HLS stream.
+    """
 
     _attr_has_entity_name = True
     _attr_name = "Machine Camera"
-    _attr_supported_features = CameraEntityFeature.STREAM
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: DatronApiClient) -> None:
         super().__init__()
@@ -51,44 +58,41 @@ class DatronMachineCamera(Camera):
             sw_version="NEXT",
             configuration_url=f"http://{entry.data[CONF_HOST]}",
         )
-        self._stream_url: str | None = None
+        self._cached_image: bytes | None = None
 
-    async def async_camera_stream(self) -> str | None:
-        """Return the camera stream URL (RTSP or MJPEG), always absolute."""
+    def _make_absolute(self, url: str) -> str:
+        """Ensure a URL is absolute by prepending the machine host if needed."""
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+        prefix = f"http://{self._client._host}:{self._client._port}"
+        return f"{prefix}{url}" if url.startswith("/") else f"{prefix}/{url}"
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Return a current snapshot from the machine camera."""
         try:
+            # Step 1: obtain a fresh token-based image URL
             info = await self._client.get_camera_image_url()
-            for key in ("url", "streamUrl", "rtspUrl", "mjpegUrl"):
-                url = info.get(key)
-                if url and isinstance(url, str):
-                    # If the URL is not absolute, prefix with machine IP
-                    if url.startswith("http://") or url.startswith("https://"):
-                        self._stream_url = url
-                        return url
-                    else:
-                        full_url = f"http://{self._client._host}:{self._client._port}{url}" if url.startswith("/") else f"http://{self._client._host}:{self._client._port}/{url}"
-                        self._stream_url = full_url
-                        return full_url
-            token = info.get("token")
-            if token:
-                url = f"http://{self._client._host}:{self._client._port}/api/v2.0/Image/Camera?token={token}"
-                self._stream_url = url
-                return url
-        except DatronApiError as err:
-            _LOGGER.warning("Error fetching camera stream URL: %s", err)
-        return self._stream_url
+            if not isinstance(info, dict):
+                _LOGGER.debug("Unexpected camera URL response type: %s", type(info))
+                return self._cached_image
 
-    async def async_stream_source(self) -> str | None:
-        """Return the stream source URL for Home Assistant's stream component."""
-        return await self.async_camera_stream()
+            # CameraImageUrl schema: {"streamId": int, "imageUrl": "..."}
+            image_url = info.get("imageUrl")
+            if not image_url:
+                _LOGGER.debug("No imageUrl in camera response: %s", info)
+                return self._cached_image
 
-    async def async_camera_image(self) -> bytes | None:
-        """Return a still image from the camera (if available)."""
-        # Try to get a token-based image URL
-        try:
-            info = await self._client.get_camera_image_url()
-            token = info.get("token")
-            if token:
-                return await self._client.get_camera_image(token)
+            # Step 2: fetch the image bytes from the absolute URL
+            abs_url = self._make_absolute(image_url)
+            _LOGGER.debug("Fetching camera snapshot from: %s", abs_url)
+            image_data = await self._client.fetch_image_url(abs_url)
+            if isinstance(image_data, bytes) and len(image_data) > 0:
+                self._cached_image = image_data
+                return image_data
+
         except DatronApiError as err:
-            _LOGGER.debug("Error fetching camera still image: %s", err)
-        return None
+            _LOGGER.debug("Error fetching camera image: %s", err)
+
+        return self._cached_image

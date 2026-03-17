@@ -237,6 +237,18 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "feed_override", "positioningOverride"),
     ),
+    # Status light hex color (for use as Bubble Card accent color via card-mod)
+    DatronSensorEntityDescription(
+        key="status_light_hex",
+        name="Status Light Hex Color",
+        icon="mdi:palette",
+        coordinator_key=COORD_FAST,
+        value_fn=lambda d: "#{:02x}{:02x}{:02x}".format(
+            int(_safe_get(d, "status_light", "red", default=0) or 0),
+            int(_safe_get(d, "status_light", "green", default=0) or 0),
+            int(_safe_get(d, "status_light", "blue", default=0) or 0),
+        ),
+    ),
     # Status light
     DatronSensorEntityDescription(
         key="status_light",

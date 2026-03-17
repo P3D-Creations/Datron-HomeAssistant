@@ -121,44 +121,51 @@ class DatronPreviewImage(ImageEntity):
         self._attr_device_info = _device_info(entry)
         self._cached_image: bytes | None = None
 
-    async def async_image(self) -> bytes | None:
-        """Return the program preview image bytes."""
-        def _make_absolute(url: str) -> str:
-            if url.startswith("http://") or url.startswith("https://"):
-                return url
-            host = getattr(self._client, "_host", None)
-            port = getattr(self._client, "_port", 80)
-            if url.startswith("/"):
-                return f"http://{host}:{port}{url}"
-            return f"http://{host}:{port}/{url}"
+    def _make_absolute(self, url: str) -> str:
+        """Ensure a URL is absolute by prepending the machine host if needed."""
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+        prefix = f"http://{self._client._host}:{self._client._port}"
+        return f"{prefix}{url}" if url.startswith("/") else f"{prefix}/{url}"
 
+    async def async_image(self) -> bytes | None:
+        """Return the program preview image bytes.
+
+        Two-step flow:
+          1. GET /Runtime/PreviewImage (bearer auth) → {"url": "/api/v2.0/Image/ProgramPreviewImage?token=..."}
+          2. GET <absolute url> (no auth, token in query string) → JPEG bytes
+
+        The /Image/ProgramPreviewImage endpoint requires a token query param
+        (it is a public endpoint) so we never call it without one.
+        Returns None / cached image if no program is loaded (API returns 204).
+        """
         try:
-            # Primary: fetch directly with bearer auth
-            image_data = await self._client.get_program_preview_image()
+            # Step 1: get the token-based URL from the runtime endpoint
+            url_info = await self._client.get_preview_image_url()
+            if url_info is None:
+                # 204 — no program loaded
+                _LOGGER.debug("No preview image available (no program loaded)")
+                return self._cached_image
+
+            image_url: str | None = None
+            if isinstance(url_info, dict):
+                # Confirmed response key: {"url": "..."}
+                image_url = url_info.get("url") or url_info.get("imageUrl") or url_info.get("fullName")
+            elif isinstance(url_info, str) and url_info:
+                image_url = url_info
+
+            if not image_url:
+                _LOGGER.debug("Unexpected preview image URL response: %s", url_info)
+                return self._cached_image
+
+            # Step 2: fetch the image bytes via the absolute public URL
+            abs_url = self._make_absolute(image_url)
+            _LOGGER.debug("Fetching preview image from: %s", abs_url)
+            image_data = await self._client.fetch_image_url(abs_url)
             if isinstance(image_data, bytes) and len(image_data) > 0:
                 self._cached_image = image_data
                 self._attr_image_last_updated = datetime.now()
                 return image_data
-
-            # Fallback: ask the API for a public token-based URL
-            url_info = await self._client.get_preview_image_url()
-            if isinstance(url_info, dict):
-                for key in ("url", "fullName", "imageUrl"):
-                    url = url_info.get(key)
-                    if url and isinstance(url, str):
-                        abs_url = _make_absolute(url)
-                        image_data = await self._client.fetch_image_url(abs_url)
-                        if isinstance(image_data, bytes) and len(image_data) > 0:
-                            self._cached_image = image_data
-                            self._attr_image_last_updated = datetime.now()
-                            return image_data
-            elif isinstance(url_info, str) and url_info:
-                abs_url = _make_absolute(url_info)
-                image_data = await self._client.fetch_image_url(abs_url)
-                if isinstance(image_data, bytes) and len(image_data) > 0:
-                    self._cached_image = image_data
-                    self._attr_image_last_updated = datetime.now()
-                    return image_data
 
         except DatronApiError as err:
             _LOGGER.debug("Error fetching preview image: %s", err)
