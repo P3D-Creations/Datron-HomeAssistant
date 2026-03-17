@@ -261,14 +261,24 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         icon="mdi:bell-alert",
         coordinator_key=COORD_FAST,
         value_fn=lambda d: (
-            _safe_get(d, "notifications", default=[{}])[0].get("message", "None")
+            (
+                next(
+                    (n.get("message", "None") for n in reversed(_safe_get(d, "notifications", default=[]))
+                     if isinstance(n, dict) and n.get("message", "").strip()),
+                    "None"
+                )
+            )
             if isinstance(_safe_get(d, "notifications", default=[]), list)
             and len(_safe_get(d, "notifications", default=[])) > 0
             else "None"
         ),
         attributes_fn=lambda d: {
             "type": (
-                _safe_get(d, "notifications", default=[{}])[0].get("type")
+                next(
+                    (n.get("type") for n in reversed(_safe_get(d, "notifications", default=[]))
+                     if isinstance(n, dict) and n.get("message", "").strip()),
+                    None
+                )
                 if isinstance(_safe_get(d, "notifications", default=[]), list)
                 and len(_safe_get(d, "notifications", default=[])) > 0
                 else None

@@ -24,6 +24,7 @@ PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.IMAGE,
+    Platform.CAMERA,
 ]
 
 type DatronConfigEntry = ConfigEntry
