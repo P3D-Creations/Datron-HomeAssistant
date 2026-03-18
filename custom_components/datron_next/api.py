@@ -13,10 +13,14 @@ from .const import API_VERSION
 _LOGGER = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
+COMMAND_TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 # Datron's embedded HTTP server can only handle a small number of
-# concurrent connections. We serialise all requests through a semaphore.
+# concurrent connections.  Background polling is serialised through one
+# semaphore; user-initiated commands get their own independent lane so
+# they are never queued behind an in-flight poll cycle.
 MAX_CONCURRENT_REQUESTS = 1
+MAX_CONCURRENT_COMMANDS = 1
 
 
 class DatronApiError(Exception):
@@ -44,6 +48,8 @@ class DatronApiClient:
         self._session = session
         self._base_url = f"http://{host}:{port}/api/v{API_VERSION}"
         self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        # Separate semaphore so commands never queue behind polling requests
+        self._cmd_semaphore = asyncio.Semaphore(MAX_CONCURRENT_COMMANDS)
 
     def set_session(self, session: aiohttp.ClientSession) -> None:
         """Set the aiohttp session."""
@@ -105,12 +111,65 @@ class DatronApiClient:
                 elapsed = time.monotonic() - start
                 _LOGGER.debug("[API] Released semaphore: %s %s (total %.3fs)", method, url, elapsed)
 
+    async def _command_request(
+        self, method: str, path: str, **kwargs: Any
+    ) -> Any:
+        """Fire a user-initiated command through the dedicated command lane.
+
+        Uses ``_cmd_semaphore`` (independent of ``_semaphore``) so the
+        request is never held back by in-flight polling calls.
+        """
+        if self._session is None:
+            raise DatronApiError("No aiohttp session configured")
+
+        url = f"{self._base_url}{path}"
+        async with self._cmd_semaphore:
+            import time
+            start = time.monotonic()
+            try:
+                async with self._session.request(
+                    method, url, headers=self._headers,
+                    timeout=COMMAND_TIMEOUT, **kwargs
+                ) as resp:
+                    if resp.status == 401:
+                        raise DatronAuthError(
+                            "Authentication failed — invalid or expired token"
+                        )
+                    if resp.status == 403:
+                        raise DatronAuthError(
+                            "Forbidden — insufficient API license tier"
+                        )
+                    if resp.status >= 400:
+                        text = await resp.text()
+                        raise DatronApiError(
+                            f"API error {resp.status} for {path}: {text}"
+                        )
+                    if resp.content_length == 0:
+                        return None
+                    content_type = resp.headers.get("Content-Type", "")
+                    if "json" in content_type or "text/plain" in content_type:
+                        return await resp.json(content_type=None)
+                    return await resp.read()
+            except aiohttp.ClientError as err:
+                elapsed = time.monotonic() - start
+                _LOGGER.error(
+                    "[CMD] ClientError after %.3fs for %s %s: %s",
+                    elapsed, method, url, err,
+                )
+                raise DatronApiError(f"Connection error for {path}: {err}") from err
+            except TimeoutError as err:
+                raise DatronApiError(f"Timeout requesting {path}") from err
+
+    async def _command_post(self, path: str, **kwargs: Any) -> Any:
+        """POST via the command lane (bypasses polling queue)."""
+        return await self._command_request("POST", path, **kwargs)
+
     async def _get(self, path: str, **kwargs: Any) -> Any:
-        """HTTP GET request."""
+        """HTTP GET request (polling lane)."""
         return await self._request("GET", path, **kwargs)
 
     async def _post(self, path: str, **kwargs: Any) -> Any:
-        """HTTP POST request."""
+        """HTTP POST request (polling lane)."""
         return await self._request("POST", path, **kwargs)
 
     # ── Machine ──────────────────────────────────────────────
@@ -325,7 +384,7 @@ class DatronApiClient:
             dialog_id: UUID from the Dialog response.
             button: Exact label of the button to click (from leftButtons/rightButtons).
         """
-        await self._post(
+        await self._command_post(
             "/Dialog/ConfirmDialog",
             json={"id": dialog_id, "button": button},
         )
@@ -334,19 +393,19 @@ class DatronApiClient:
 
     async def pause_execution(self) -> dict[str, Any]:
         """Pause the current program execution."""
-        return await self._post("/Execution/Pause")
+        return await self._command_post("/Execution/Pause")
 
     async def resume_execution(self) -> dict[str, Any]:
         """Resume a paused program execution."""
-        return await self._post("/Execution/Resume")
+        return await self._command_post("/Execution/Resume")
 
     async def abort_execution(self) -> dict[str, Any]:
         """Abort the currently running program."""
-        return await self._post("/Execution/Abort")
+        return await self._command_post("/Execution/Abort")
 
     async def move_to_park_position(self) -> dict[str, Any]:
         """Move the spindle to the park position."""
-        return await self._post("/Execution/MoveToParkPosition")
+        return await self._command_post("/Execution/MoveToParkPosition")
 
     async def load_program(self, path: str) -> dict[str, Any]:
         """Load a program without executing it.
@@ -355,7 +414,7 @@ class DatronApiClient:
         ``device:DEVICENAME\\\\program.simpl``.
         Returns ExecutionResult {resultCode: str}.
         """
-        return await self._post("/Execution/LoadProgram", json={"path": path})
+        return await self._command_post("/Execution/LoadProgram", json={"path": path})
 
     async def execute_program_async(self, path: str) -> dict[str, Any]:
         """Execute a program asynchronously.
@@ -363,7 +422,7 @@ class DatronApiClient:
         Returns immediately after the program is loaded; execution continues
         in the background. Returns ExecutionResult {resultCode: str}.
         """
-        return await self._post(
+        return await self._command_post(
             "/Execution/ExecuteProgramAsync", json={"path": path}
         )
 
