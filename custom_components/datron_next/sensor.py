@@ -335,6 +335,39 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "None",
         ),
     ),
+    # Cartridge level
+    DatronSensorEntityDescription(
+        key="cartridge_level",
+        name="Cartridge Level",
+        icon="mdi:flask-outline",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        coordinator_key=COORD_FAST,
+        # API returns a plain float, not a dict
+        value_fn=lambda d: _safe_get(d, "cartridge_level"),
+    ),
+    # Open dialog
+    DatronSensorEntityDescription(
+        key="open_dialog",
+        name="Open Dialog",
+        icon="mdi:message-alert-outline",
+        coordinator_key=COORD_FAST,
+        value_fn=lambda d: (
+            _safe_get(d, "open_dialog", "caption") or "(no caption)"
+            if isinstance(_safe_get(d, "open_dialog"), dict)
+            else "none"
+        ),
+        attributes_fn=lambda d: {
+            "is_open": isinstance(_safe_get(d, "open_dialog"), dict),
+            "dialog_id": _safe_get(d, "open_dialog", "id"),
+            "text": _safe_get(d, "open_dialog", "text"),
+            "details": _safe_get(d, "open_dialog", "details"),
+            "severity": _safe_get(d, "open_dialog", "severity"),
+            "left_buttons": _safe_get(d, "open_dialog", "leftButtons") or [],
+            "right_buttons": _safe_get(d, "open_dialog", "rightButtons") or [],
+        },
+    ),
 )
 
 MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (

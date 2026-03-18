@@ -1,0 +1,4825 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "DATRON next REST API",
+    "description": "Allows access to data and functions of the DATRON next control and serves the development of individual solutions in the interaction between 3rd party software and the DATRON milling machine. Thus, the DATRON next control provides a programming interface according to a very widespread standard. \r\n\r\nREST stands for Representational State Transfer. <br />\r\nAPI stands for Application Programming Interface. \r\n\r\nThe DATRON next REST API is offered in two license variants. \r\n\r\nBasic version <br />\r\nEnables read access to operating data of the machine.\r\n\r\nAutomation version<br />\r\nAllows you to execute, pause or cancel milling programs. Contains Basic variant.",
+    "version": "1.0"
+  },
+  "paths": {
+    "/api/Camera/CreateCameraImageUrl": {
+      "get": {
+        "tags": [
+          "Camera"
+        ],
+        "summary": "[API Basic] [API Automation] Creates a url where to get the current camera image from the stream with the given id.",
+        "operationId": "api_Camera_CreateCameraImageUrlGET",
+        "parameters": [
+          {
+            "name": "streamId",
+            "in": "query",
+            "description": "Id of the stream",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraImageUrl"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraImageUrl"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraImageUrl"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The camera is not configured or the stream with given id is not configured.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Camera not found",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Cartridge/CurrentLevel": {
+      "get": {
+        "tags": [
+          "Cartridge"
+        ],
+        "summary": "[API Basic] Returns the current level of the cartridge\r\nAnalog sensor installed: Returns the current fill level (0%-100%) of the cartridge.\r\nDigital sensor installed: Returns 0% if digital sensor is triggered, otherwise 100%\r\nNo sensor installed: Always returns 100%",
+        "operationId": "api_Cartridge_CurrentLevelGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Cartridge/DialogThreshold": {
+      "get": {
+        "tags": [
+          "Cartridge"
+        ],
+        "summary": "[API Basic] Returns the threshold value from when the \"Critical cartridge fill level\" dialog is displayed.",
+        "operationId": "api_Cartridge_DialogThresholdGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "number",
+                  "format": "double"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Dialog/ConfirmDialog": {
+      "post": {
+        "tags": [
+          "Dialog"
+        ],
+        "summary": "[API Automation] Function used confirm dialogs using one of the buttons obtained by the OpenDialog function",
+        "operationId": "api_Dialog_ConfirmDialogPOST",
+        "requestBody": {
+          "description": "Parameters to tell next software which interaction to perform on the dialog",
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/DialogConfirmParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/DialogConfirmParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/DialogConfirmParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/DialogConfirmParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Dialog/OpenDialog": {
+      "get": {
+        "tags": [
+          "Dialog"
+        ],
+        "summary": "[API Basic] Returns the currently opened dialog, if one exists. Depending on the type of dialog some fields of the response might be empty or not present!",
+        "operationId": "api_Dialog_OpenDialogGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dialog"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dialog"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dialog"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/Execution/Abort": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Aborts the current execution",
+        "operationId": "api_Execution_AbortPOST",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/ExecuteLines": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Executes Lines containing Program calls, programs must be avaiable in Module Base",
+        "operationId": "api_Execution_ExecuteLinesPOST",
+        "requestBody": {
+          "description": "blahhblubb",
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteLinesParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteLinesParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteLinesParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteLinesParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/ExecuteLoadedProgram": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Executes the currently loaded SimPL program.",
+        "operationId": "api_Execution_ExecuteLoadedProgramPOST",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/ExecuteProgram": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Executes a program. Compare the path format in the SimPL-Reference for loading modules.",
+        "operationId": "api_Execution_ExecuteProgramPOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/ExecuteProgramAsync": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Executes a program in an asynchronous way. Compare the path format in the SimPL-Reference for loading modules. The call returns immediately after loading the program. The return value indicates whether the loading worked.",
+        "operationId": "api_Execution_ExecuteProgramAsyncPOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/ExecuteVerifiedProgram": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Executes a program only if the checksum given matches the current checksum. For more details see ProgramFileInfo request. For more informations about the path-format look in the SimPL-Reference regarding \"loading modules\".",
+        "operationId": "api_Execution_ExecuteVerifiedProgramPOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifiedProgramStartParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifiedProgramStartParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifiedProgramStartParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifiedProgramStartParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is not program matching the path.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The path is bad formatted OR the hashsum is invalid. Please see also ProgramFileInfo to inspect the hash state.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/LoadProgram": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Loads a program. Compare the path format in the SimPL-Reference for loading modules.",
+        "operationId": "api_Execution_LoadProgramPOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramStartParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/MoveToParkPosition": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Moves the spindle into the park position",
+        "operationId": "api_Execution_MoveToParkPositionPOST",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/Pause": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Pauses the current execution",
+        "operationId": "api_Execution_PausePOST",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/ProgramFileInfo": {
+      "get": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Returns informations about a program. Compare the path format in the SimPL-Reference for loading modules.",
+        "operationId": "api_Execution_ProgramFileInfoGET",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "description": "Compare the path format in the SimPL-Reference for loading modules.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramFileInfo"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramFileInfo"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramFileInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The path is bad formatted.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is not program matching the path.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/RefreshUserDefinedLibraryFolder": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Refreshes the user defined library folder. Caution: if there is any file which is not usable, all files get removed.\r\nThis method does not return whether the operation was successful or not.",
+        "operationId": "api_Execution_RefreshUserDefinedLibraryFolderPOST",
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshUserLibraryFolderResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshUserLibraryFolderResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshUserLibraryFolderResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Execution/Resume": {
+      "post": {
+        "tags": [
+          "Execution"
+        ],
+        "summary": "[API Automation] Resumes the current execution",
+        "operationId": "api_Execution_ResumePOST",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/FileSystem/EnumerateFolderContents": {
+      "get": {
+        "tags": [
+          "FileSystem"
+        ],
+        "summary": "[API Automation] Enumerates the contents of a given Path",
+        "operationId": "api_FileSystem_EnumerateFolderContentsGET",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "description": "The directory, whose path will be enumerated in SimPL Syntax (i.e. machine:folder/subfolder)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderContentNames"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderContentNames"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderContentNames"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/FileSystem/UploadBinaryFile": {
+      "post": {
+        "tags": [
+          "FileSystem"
+        ],
+        "summary": "[API Automation] Allows to upload media files such as images to save to the drive. All files have be provided as a base64 string.",
+        "operationId": "api_FileSystem_UploadBinaryFilePOST",
+        "requestBody": {
+          "description": "",
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadBinaryFileParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadBinaryFileParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadBinaryFileParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadBinaryFileParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Path not be found",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error during writing of file",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Path was outside allowed directory",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "File content was empty",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/FileSystem/UploadTextFile": {
+      "post": {
+        "tags": [
+          "FileSystem"
+        ],
+        "summary": "[API Automation] Allows uploading of files.",
+        "operationId": "api_FileSystem_UploadTextFilePOST",
+        "requestBody": {
+          "description": "",
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadTextFileParameters"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadTextFileParameters"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadTextFileParameters"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadTextFileParameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Path not be found",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error during writing of file",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Path was outside allowed directory",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "File content was empty",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Image/Camera": {
+      "get": {
+        "tags": [
+          "Image"
+        ],
+        "summary": "[Public] Returns the Image of the Camera. The stream id is encoded in the given token.",
+        "operationId": "api_Image_CameraGET",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "description": "You can get a token by invoking url generation i.e. [Get] /api/Camera/CreateCameraImageUrl",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The camera is not configured.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Task cannot be completed with the id provided.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Image/Machine": {
+      "get": {
+        "tags": [
+          "Image"
+        ],
+        "summary": "[Public] Returns the machine image",
+        "operationId": "api_Image_MachineGET",
+        "parameters": [
+          {
+            "name": "machineType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Image/ProgramPreviewImage": {
+      "get": {
+        "tags": [
+          "Image"
+        ],
+        "summary": "[Public] Queries the simulated preview image of the currently loaded program",
+        "operationId": "api_Image_ProgramPreviewImageGET",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "description": "one can get a token by invoking program preview image request i.e. [Get] /api/Runtime/PreviewImage",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no program loaded",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Image/Tool": {
+      "get": {
+        "tags": [
+          "Image"
+        ],
+        "summary": "[Public] Queries the image of a tool",
+        "operationId": "api_Image_ToolGET",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "description": "one can get a token by invoking toolrequests i.e. [Get] /api/Tool/ToolInSpindle",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "withSpindle",
+            "in": "query",
+            "description": "show tool with spindle",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "widthInPixel",
+            "in": "query",
+            "description": "width in pixel",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 400
+            }
+          },
+          {
+            "name": "heightInPixel",
+            "in": "query",
+            "description": "height in pixel",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 150
+            }
+          },
+          {
+            "name": "upRight",
+            "in": "query",
+            "description": "true: tool is shown vertically with tip to top. false: tool is shown horicontally with tip to the left.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "mirrored",
+            "in": "query",
+            "description": "mirrors the tool (tip to the bottom or to the right)",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Machine/Licenses": {
+      "get": {
+        "tags": [
+          "Machine"
+        ],
+        "summary": "[Public] Returns a descirption regarding activated license options.",
+        "operationId": "api_Machine_LicensesGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseInformation"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseInformation"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseInformation"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Machine/MachineNumber": {
+      "get": {
+        "tags": [
+          "Machine"
+        ],
+        "summary": "[Public] Returns the unique machine number.",
+        "operationId": "api_Machine_MachineNumberGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineNumber"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineNumber"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineNumber"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Machine/MachineStatus": {
+      "get": {
+        "tags": [
+          "Machine"
+        ],
+        "summary": "[API Basic] [API Automation] Gets the status of program execution",
+        "operationId": "api_Machine_MachineStatusGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineStatus"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineStatus"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Machine/MachineType": {
+      "get": {
+        "tags": [
+          "Machine"
+        ],
+        "summary": "[Public] Returns the machine type.",
+        "operationId": "api_Machine_MachineTypeGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineType"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineType"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineType"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Machine/NextSoftwareVersion": {
+      "get": {
+        "tags": [
+          "Machine"
+        ],
+        "summary": "[API Basic] [API Automation] Returns the software version of the next control.",
+        "operationId": "api_Machine_NextSoftwareVersionGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextSoftwareVersion"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextSoftwareVersion"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextSoftwareVersion"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Machine/Ping": {
+      "get": {
+        "tags": [
+          "Machine"
+        ],
+        "summary": "[Public] Especially useful for testing the connection to the machine.",
+        "operationId": "api_Machine_PingGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Machine/Reference": {
+      "post": {
+        "tags": [
+          "Machine"
+        ],
+        "summary": "[API Automation] Starts homing if not already referenced.",
+        "operationId": "api_Machine_ReferencePOST",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "something went wrong while homing.",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/MachineComponents/AxisPositions": {
+      "get": {
+        "tags": [
+          "MachineComponents"
+        ],
+        "summary": "[API Basic] [API Automation] Queries axis positions in the rcs",
+        "operationId": "api_MachineComponents_AxisPositionsGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionStatus"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionStatus"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/MachineComponents/CompressedAir": {
+      "get": {
+        "tags": [
+          "MachineComponents"
+        ],
+        "summary": "[API Basic] [API Automation] Queries sensors regarding compressed air",
+        "operationId": "api_MachineComponents_CompressedAirGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompressedAirStatus"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompressedAirStatus"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompressedAirStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/MachineComponents/FeedOverride": {
+      "get": {
+        "tags": [
+          "MachineComponents"
+        ],
+        "summary": "[API Basic] [API Automation] Returns the current state of the two Feed override dials on the hand control unit",
+        "operationId": "api_MachineComponents_FeedOverrideGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedOverride"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedOverride"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedOverride"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/MachineComponents/Runtime": {
+      "get": {
+        "tags": [
+          "MachineComponents"
+        ],
+        "summary": "[API Basic] [API Automation] Returns runtime informations",
+        "operationId": "api_MachineComponents_RuntimeGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runtime"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runtime"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runtime"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/MachineComponents/SpraySystem": {
+      "get": {
+        "tags": [
+          "MachineComponents"
+        ],
+        "summary": "[API Basic] [API Automation] Queries sensors regarding spray system",
+        "operationId": "api_MachineComponents_SpraySystemGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpraySystemStatus"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpraySystemStatus"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpraySystemStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/MachineComponents/StatusLight": {
+      "get": {
+        "tags": [
+          "MachineComponents"
+        ],
+        "summary": "[API Basic] [API Automation] Gets the RGB status light",
+        "operationId": "api_MachineComponents_StatusLightGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusLight"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusLight"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusLight"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/MachineComponents/Vacuum": {
+      "get": {
+        "tags": [
+          "MachineComponents"
+        ],
+        "summary": "[API Basic] [API Automation] Queries sensors regarding vacuum",
+        "operationId": "api_MachineComponents_VacuumGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacuumStatus"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacuumStatus"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacuumStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/RemoteLink/Execute": {
+      "post": {
+        "tags": [
+          "RemoteLink"
+        ],
+        "summary": "[API Automation] Executes a program. Compare the path format in the SimPL-Reference for loading modules.",
+        "operationId": "api_RemoteLink_ExecutePOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteLinkProgramFileName"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteLinkProgramFileName"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteLinkProgramFileName"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteLinkProgramFileName"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteLinkPrograms"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteLinkPrograms"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteLinkPrograms"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/RemoteLink/RemoteLinkPrograms": {
+      "get": {
+        "tags": [
+          "RemoteLink"
+        ],
+        "summary": "[API Automation] Returns values for the remote link app",
+        "operationId": "api_RemoteLink_RemoteLinkProgramsGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteLinkPrograms"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteLinkPrograms"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteLinkPrograms"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Runtime/CurrentlyLoadedProgram": {
+      "get": {
+        "tags": [
+          "Runtime"
+        ],
+        "summary": "[API Basic] [API Automation] Queries the currently loaded program",
+        "operationId": "api_Runtime_CurrentlyLoadedProgramGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no program loaded",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Runtime/ExecutionDurations": {
+      "get": {
+        "tags": [
+          "Runtime"
+        ],
+        "summary": "[API Basic] [API Automation] Queries timings for the current execution",
+        "operationId": "api_Runtime_ExecutionDurationsGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDuration"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDuration"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDuration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Runtime/Notifications": {
+      "get": {
+        "tags": [
+          "Runtime"
+        ],
+        "summary": "[API Basic] [API Automation] Returns the last 100 Notifications",
+        "operationId": "api_Runtime_NotificationsGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Notification"
+                  }
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Notification"
+                  }
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Notification"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Runtime/PreviewImage": {
+      "get": {
+        "tags": [
+          "Runtime"
+        ],
+        "summary": "[API Basic] [API Automation] Returns a URL to the preview image to the currently loaded program",
+        "operationId": "api_Runtime_PreviewImageGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "image could not be found",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Tool/Tool": {
+      "get": {
+        "tags": [
+          "Tool"
+        ],
+        "summary": "[API Basic] [API Automation] Queries the tool by id",
+        "operationId": "api_Tool_ToolGET",
+        "parameters": [
+          {
+            "name": "toolId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tool"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tool"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tool"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Tool/ToolInSpindle": {
+      "get": {
+        "tags": [
+          "Tool"
+        ],
+        "summary": "[API Basic] [API Automation] Queries the tool in Spindle",
+        "operationId": "api_Tool_ToolInSpindleGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tool"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tool"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tool"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no tool in spindle"
+          }
+        }
+      }
+    },
+    "/api/Tool/ToolsInChanger": {
+      "get": {
+        "tags": [
+          "Tool"
+        ],
+        "summary": "[API Basic] [API Automation] Queries tools in portalchanger or in embedded toolchanger",
+        "operationId": "api_Tool_ToolsInChangerGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Tool/ToolsInEmbeddedToolChanger": {
+      "get": {
+        "tags": [
+          "Tool"
+        ],
+        "summary": "[API Basic] [API Automation] Queries the tools in embedded tool changer",
+        "operationId": "api_Tool_ToolsInEmbeddedToolChangerGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Tool/ToolsInPortalChanger": {
+      "get": {
+        "tags": [
+          "Tool"
+        ],
+        "summary": "[API Basic] [API Automation] Queries the tools in portal changer",
+        "operationId": "api_Tool_ToolsInPortalChangerGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Tool/ToolsInProgram": {
+      "get": {
+        "tags": [
+          "Tool"
+        ],
+        "summary": "[API Basic] [API Automation] Queries the tools that could be used at some point in the currently loaded program",
+        "operationId": "api_Tool_ToolsInProgramGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Tool/ToolsInWarehouse": {
+      "get": {
+        "tags": [
+          "Tool"
+        ],
+        "summary": "[API Basic] [API Automation] Queries the tools in warehouse",
+        "operationId": "api_Tool_ToolsInWarehouseGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tool"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/User/CreateToken": {
+      "post": {
+        "tags": [
+          "User"
+        ],
+        "summary": "[Public] Create an accesstoken (bearer authentication)",
+        "operationId": "api_User_CreateTokenPOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInData"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInData"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInData"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInData"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/User/Info": {
+      "get": {
+        "tags": [
+          "User"
+        ],
+        "summary": "[Public] Returns permissions granted by given claim",
+        "operationId": "api_User_InfoGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserClaims"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserClaims"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserClaims"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Variable/BooleanVariable": {
+      "get": {
+        "tags": [
+          "Variable"
+        ],
+        "summary": "[API Automation] Fetches the value of the boolean variable with the given name from the database.",
+        "operationId": "api_Variable_BooleanVariableGET",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoolVariable"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoolVariable"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoolVariable"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Variable"
+        ],
+        "summary": "[API Automation] Writes the given value to the database under the given name as type boolean.\r\nIf a boolean variable already exists under the name, the value is overwritten.\r\nOtherwise, a new entry is created.",
+        "operationId": "api_Variable_BooleanVariablePOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/BoolVariable"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/BoolVariable"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/BoolVariable"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/BoolVariable"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Variable/NumberVariable": {
+      "get": {
+        "tags": [
+          "Variable"
+        ],
+        "summary": "[API Automation] Fetches the value of the number variable with the given name from the database.",
+        "operationId": "api_Variable_NumberVariableGET",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/NumberVariable"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/NumberVariable"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/NumberVariable"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Variable"
+        ],
+        "summary": "[API Automation] Writes the given value to the database under the given name as type number.\r\nIf a number variable already exists under the name, the value is overwritten.\r\nOtherwise, a new entry is created.",
+        "operationId": "api_Variable_NumberVariablePOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/NumberVariable"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/NumberVariable"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/NumberVariable"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/NumberVariable"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Variable/StringVariable": {
+      "get": {
+        "tags": [
+          "Variable"
+        ],
+        "summary": "[API Automation] Fetches the value of the string variable with the given name from the database.",
+        "operationId": "api_Variable_StringVariableGET",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/StringVariable"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/StringVariable"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/StringVariable"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Variable"
+        ],
+        "summary": "[API Automation] Writes the given value to the database under the given name as type string.\r\nIf a string variable already exists under the name, the value is overwritten.\r\nOtherwise, a new entry is created.",
+        "operationId": "api_Variable_StringVariablePOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/StringVariable"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/StringVariable"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/StringVariable"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/StringVariable"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Workpiece/Activate": {
+      "post": {
+        "tags": [
+          "Workpiece"
+        ],
+        "summary": "[API Automation] Activates the workpiece",
+        "operationId": "api_Workpiece_ActivatePOST",
+        "parameters": [
+          {
+            "name": "workpieceName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    },
+    "/api/Workpiece/GetWorkpieces": {
+      "get": {
+        "tags": [
+          "Workpiece"
+        ],
+        "summary": "[API Basic] [API Automation] Returns all saved workpieces",
+        "operationId": "api_Workpiece_GetWorkpiecesGET",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkpieceSetup"
+                  }
+                }
+              },
+              "application/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkpieceSetup"
+                  }
+                }
+              },
+              "text/json; v=1.0": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkpieceSetup"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Workpiece/UpdateWorkpieceImage": {
+      "post": {
+        "tags": [
+          "Workpiece"
+        ],
+        "summary": "[API Automation] Updates the image of the workpiece",
+        "operationId": "api_Workpiece_UpdateWorkpieceImagePOST",
+        "parameters": [
+          {
+            "name": "workpieceName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    },
+    "/api/Workpiece/Workpiece": {
+      "post": {
+        "tags": [
+          "Workpiece"
+        ],
+        "summary": "[API Automation] Updates the workpiece",
+        "operationId": "api_Workpiece_WorkpiecePOST",
+        "requestBody": {
+          "content": {
+            "application/json-patch+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkpieceUpdateParameter"
+              }
+            },
+            "application/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkpieceUpdateParameter"
+              }
+            },
+            "text/json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkpieceUpdateParameter"
+              }
+            },
+            "application/*+json; v=1.0": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkpieceUpdateParameter"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    },
+    "/api/Workpiece/WorkpieceImage": {
+      "get": {
+        "tags": [
+          "Workpiece"
+        ],
+        "summary": "[API Basic] [API Automation] Returns the picture of the workpiece",
+        "operationId": "api_Workpiece_WorkpieceImageGET",
+        "parameters": [
+          {
+            "name": "workpieceName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": { }
+              },
+              "application/json; v=1.0": {
+                "schema": { }
+              },
+              "text/json; v=1.0": {
+                "schema": { }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain; v=1.0": {
+                "schema": { }
+              },
+              "application/json; v=1.0": {
+                "schema": { }
+              },
+              "text/json; v=1.0": {
+                "schema": { }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AlertSettings": {
+        "type": "object",
+        "properties": {
+          "receivers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Receiver"
+            },
+            "description": "Receiver definitions",
+            "nullable": true
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rule"
+            },
+            "description": "Rule definitions",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Settings for the alert-app"
+      },
+      "AnalogSensor": {
+        "type": "object",
+        "properties": {
+          "logical": {
+            "type": "boolean",
+            "description": "logical level. Status is in some specified range."
+          },
+          "status": {
+            "type": "number",
+            "description": "status",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "represents a digital sensor"
+      },
+      "BoolVariable": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "boolean",
+            "description": "The bool value."
+          },
+          "name": {
+            "pattern": "(?=^((?!\\babort\\b|\\baction\\b|\\band\\b|\\bany\\b|\\bappend\\b|\\bassignable\\b|\\bas\\b|\\bat\\b|\\bboolean\\b|\\bbreak\\b|\\bcase\\b|\\bcontains\\b|\\bdeletesavedvalueof\\b|\\belse\\b|\\bend\\b|\\bendcase\\b|\\bendfor\\b|\\bendforeach\\b|\\bendif\\b|\\bendwhile\\b|\\bendfunction\\b|\\bendprogram\\b|\\benumeration\\b|\\bexcept\\b|\\bexit\\b|\\bexport\\b|\\bextern\\b|\\bfor\\b|\\bforeach\\b|\\bfrom\\b|\\bfunction\\b|\\bgoto\\b|\\bhassavedvalue\\b|\\bhasvalue\\b|\\bif\\b|\\bimport\\b|\\bin\\b|\\binsert\\b|\\bintersect\\b|\\binto\\b|\\bis\\b|\\bloadvalueof\\b|\\bmodule\\b|\\bnot\\b|\\bnullvalueof\\b|\\bnumber\\b|\\boptional\\b|\\bor\\b|\\bprogram\\b|\\breference\\b|\\bremove\\b|\\bresize\\b|\\breturn\\b|\\breturns\\b|\\bsavevalueof\\b|\\bsequence\\b|\\bsizeof\\b|\\bstep\\b|\\bstring\\b|\\bstructure\\b|\\bto\\b|\\bunion\\b|\\busermodule\\b|\\busing\\b|\\bwhile\\b|\\bxor\\b).)).*^(?:[A-Za-zäöüß][0-9A-Za-zäöüß_]*)+$",
+            "type": "string",
+            "description": "Name of the variable. Name is validated according to the simpl variable naming rules.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a bool value"
+      },
+      "CameraImageUrl": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "integer",
+            "description": "stream id",
+            "format": "int32",
+            "readOnly": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "Base image url to request a camera image",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a url to query the current camera image"
+      },
+      "CompressedAirStatus": {
+        "type": "object",
+        "properties": {
+          "analogSensorForCompressedAirInput": {
+            "$ref": "#/components/schemas/AnalogSensor"
+          },
+          "digitalSensorForCompressedAirInput": {
+            "$ref": "#/components/schemas/DigitalSensor"
+          },
+          "analogSensorForClampingDevice": {
+            "$ref": "#/components/schemas/AnalogSensor"
+          },
+          "compressedAirSoftwareMonitorEnabled": {
+            "type": "boolean",
+            "description": "is true if the software is monitoring the compressed air sensors"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a vacuum state"
+      },
+      "DatronEkdStatus": {
+        "type": "object",
+        "properties": {
+          "tankIsEmpty": {
+            "$ref": "#/components/schemas/DigitalSensor"
+          }
+        },
+        "additionalProperties": false,
+        "description": "encapsulates the datron ekd sensors"
+      },
+      "Dialog": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique ID of this dialog required to control it in a later request",
+            "format": "uuid"
+          },
+          "caption": {
+            "type": "string",
+            "description": "Caption at the top of the dialog",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "description": "Main text describing what the dialog is about. Might not be present for every dialog type",
+            "nullable": true
+          },
+          "details": {
+            "type": "string",
+            "description": "Additional information to the main Text. Might not be present for every dialog type",
+            "nullable": true
+          },
+          "severity": {
+            "type": "string",
+            "description": "Dialog Severity",
+            "nullable": true
+          },
+          "leftButtons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Buttons on the bottom left side of the dialog box",
+            "nullable": true
+          },
+          "rightButtons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Buttons on the bottom right side of the dialog box",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a Dialog opened in the User Interface on the Machine"
+      },
+      "DialogConfirmParameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Id of the previously obtained dialog",
+            "format": "uuid"
+          },
+          "button": {
+            "type": "string",
+            "description": "The button that is supposed to be pressed to confirm the dialog",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Parameters required to confirm a dialog previously obtained with one of the get functions"
+      },
+      "DigitalSensor": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "boolean",
+            "description": "status"
+          }
+        },
+        "additionalProperties": false,
+        "description": "represents a digital sensor"
+      },
+      "ExecuteLinesParameters": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "string",
+            "description": "program lines, separated by newline characters",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Valid SimPL program calls, programs must be available in simpl module Base"
+      },
+      "ExecutionDuration": {
+        "type": "object",
+        "properties": {
+          "programExecutionTime": {
+            "type": "string",
+            "description": "the time that the program is already running",
+            "format": "date-span",
+            "readOnly": true
+          },
+          "programmLeftTime": {
+            "type": "string",
+            "description": "The time that the program is expected to take",
+            "format": "date-span",
+            "readOnly": true
+          },
+          "progress": {
+            "type": "number",
+            "description": "progress between 0 and 1",
+            "format": "double",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Description of the milling progress"
+      },
+      "ExecutionResult": {
+        "type": "object",
+        "properties": {
+          "resultCode": {
+            "$ref": "#/components/schemas/ExecutionResultCode"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Execution result"
+      },
+      "ExecutionResultCode": {
+        "enum": [
+          "Success",
+          "LoadingImpossible",
+          "LoadingInterrupted",
+          "LoadingInvalidPath",
+          "LoadingMachineBusy",
+          "ExecutionImpossible",
+          "ExecutionAborted",
+          "ExecutionRuntimeError"
+        ],
+        "type": "string",
+        "description": "Reason of program execution failure",
+        "x-enumNames": [
+          "Success",
+          "LoadingImpossible",
+          "LoadingInterrupted",
+          "LoadingInvalidPath",
+          "LoadingMachineBusy",
+          "ExecutionImpossible",
+          "ExecutionAborted",
+          "ExecutionRuntimeError"
+        ]
+      },
+      "FeedOverride": {
+        "type": "object",
+        "properties": {
+          "cuttingOverride": {
+            "type": "integer",
+            "description": "The override applied to cutting type commands",
+            "format": "int32"
+          },
+          "positioningOverride": {
+            "type": "integer",
+            "description": "The override applied to positioning type commands",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The current overrides applied by the hand control unit"
+      },
+      "FolderContentNames": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "All files contained in the given directory",
+            "nullable": true
+          },
+          "subfolders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "All folders contained in the given directory",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Shows what is inside a folder requested through the API"
+      },
+      "GeometricalAttribute": {
+        "enum": [
+          "Diameter",
+          "BodyLength",
+          "CornerRadius",
+          "FluteLength",
+          "NumberOfFlutes",
+          "OverallLength",
+          "ShaftDiameter",
+          "ShoulderLength",
+          "TaperAngle",
+          "ThreadPitch",
+          "TipAngle",
+          "TipDiameter",
+          "ReferenceBodyLength",
+          "ShoulderDiameter",
+          "FluteAngle",
+          "ThreadAngle"
+        ],
+        "type": "string",
+        "description": "Describes an aspect of the geometric nature of a tool",
+        "x-enumNames": [
+          "Diameter",
+          "BodyLength",
+          "CornerRadius",
+          "FluteLength",
+          "NumberOfFlutes",
+          "OverallLength",
+          "ShaftDiameter",
+          "ShoulderLength",
+          "TaperAngle",
+          "ThreadPitch",
+          "TipAngle",
+          "TipDiameter",
+          "ReferenceBodyLength",
+          "ShoulderDiameter",
+          "FluteAngle",
+          "ThreadAngle"
+        ]
+      },
+      "GeometricalProperty": {
+        "type": "object",
+        "properties": {
+          "attribute": {
+            "$ref": "#/components/schemas/GeometricalAttribute"
+          },
+          "value": {
+            "type": "number",
+            "description": "Value",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents an geometrical aspect of the tool"
+      },
+      "LicenseInformation": {
+        "type": "object",
+        "properties": {
+          "cockpitApp": {
+            "type": "boolean",
+            "description": "Cockpit App"
+          },
+          "cameraApp": {
+            "type": "boolean",
+            "description": "Camera App"
+          },
+          "alertApp": {
+            "type": "boolean",
+            "description": "Alert App"
+          },
+          "remoteLinkApp": {
+            "type": "boolean",
+            "description": "Remote link App"
+          },
+          "apiBasic": {
+            "type": "boolean",
+            "description": "API for OEE like purposes."
+          },
+          "apiAutomation": {
+            "type": "boolean",
+            "description": "API for automation purposes."
+          },
+          "sisterToolOption": {
+            "type": "boolean",
+            "description": "Sister tool option"
+          },
+          "cameraOption": {
+            "type": "boolean",
+            "description": "Camera option"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Descirption regarding activated license options."
+      },
+      "MachineExecutionState": {
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "type": "integer",
+        "format": "int32",
+        "x-enumNames": [
+          "Init",
+          "Preparing",
+          "Idle",
+          "Running",
+          "Pause",
+          "Manual",
+          "Aborting",
+          "Aborted",
+          "Transient",
+          "WaitingForUserInput"
+        ]
+      },
+      "MachineNumber": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string",
+            "description": "machine number",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The machine number"
+      },
+      "MachineStatus": {
+        "type": "object",
+        "properties": {
+          "executionState": {
+            "$ref": "#/components/schemas/MachineExecutionState"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Status of machine"
+      },
+      "MachineType": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Technical Machine Type",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Normal Machine Type",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Machinetype"
+      },
+      "Microjet": {
+        "type": "object",
+        "properties": {
+          "tank1IsEmpty": {
+            "$ref": "#/components/schemas/DigitalSensor"
+          },
+          "tank2IsEmpty": {
+            "$ref": "#/components/schemas/DigitalSensor"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Encapsulates the microjet spraysystem sensors"
+      },
+      "NextSoftwareVersion": {
+        "type": "object",
+        "properties": {
+          "softwareVersion": {
+            "type": "string",
+            "description": "Next version as string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The software version"
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/StatusMessageType"
+          },
+          "message": {
+            "type": "string",
+            "description": "Message",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A Notification"
+      },
+      "NumberVariable": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "description": "The double value.",
+            "format": "double"
+          },
+          "name": {
+            "pattern": "(?=^((?!\\babort\\b|\\baction\\b|\\band\\b|\\bany\\b|\\bappend\\b|\\bassignable\\b|\\bas\\b|\\bat\\b|\\bboolean\\b|\\bbreak\\b|\\bcase\\b|\\bcontains\\b|\\bdeletesavedvalueof\\b|\\belse\\b|\\bend\\b|\\bendcase\\b|\\bendfor\\b|\\bendforeach\\b|\\bendif\\b|\\bendwhile\\b|\\bendfunction\\b|\\bendprogram\\b|\\benumeration\\b|\\bexcept\\b|\\bexit\\b|\\bexport\\b|\\bextern\\b|\\bfor\\b|\\bforeach\\b|\\bfrom\\b|\\bfunction\\b|\\bgoto\\b|\\bhassavedvalue\\b|\\bhasvalue\\b|\\bif\\b|\\bimport\\b|\\bin\\b|\\binsert\\b|\\bintersect\\b|\\binto\\b|\\bis\\b|\\bloadvalueof\\b|\\bmodule\\b|\\bnot\\b|\\bnullvalueof\\b|\\bnumber\\b|\\boptional\\b|\\bor\\b|\\bprogram\\b|\\breference\\b|\\bremove\\b|\\bresize\\b|\\breturn\\b|\\breturns\\b|\\bsavevalueof\\b|\\bsequence\\b|\\bsizeof\\b|\\bstep\\b|\\bstring\\b|\\bstructure\\b|\\bto\\b|\\bunion\\b|\\busermodule\\b|\\busing\\b|\\bwhile\\b|\\bxor\\b).)).*^(?:[A-Za-zäöüß][0-9A-Za-zäöüß_]*)+$",
+            "type": "string",
+            "description": "Name of the variable. Name is validated according to the simpl variable naming rules.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a number variable"
+      },
+      "PositionStatus": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "description": "current X position",
+            "format": "double"
+          },
+          "y": {
+            "type": "number",
+            "description": "current Y position",
+            "format": "double"
+          },
+          "z": {
+            "type": "number",
+            "description": "current Z position",
+            "format": "double"
+          },
+          "a": {
+            "type": "number",
+            "description": "current A angle",
+            "format": "double"
+          },
+          "b": {
+            "type": "number",
+            "description": "current B angle",
+            "format": "double"
+          },
+          "c": {
+            "type": "number",
+            "description": "current C angle",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a position"
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": { }
+      },
+      "Program": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the program",
+            "nullable": true
+          },
+          "directory": {
+            "type": "string",
+            "description": "The directory of the program",
+            "nullable": true
+          },
+          "fullName": {
+            "type": "string",
+            "description": "The fullname of the program",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a Program"
+      },
+      "ProgramFileInfo": {
+        "type": "object",
+        "properties": {
+          "latestChangeTime": {
+            "type": "string",
+            "description": "Zeitpunkt der letzten Änderung des Programms",
+            "format": "date-time"
+          },
+          "expectedExecutionDuration": {
+            "type": "string",
+            "description": "Aus einer Simulation berechnete Dauer für die Programmausführung\r\nWenn das Programm  noch nie simuliert wurde, null",
+            "format": "date-span",
+            "nullable": true
+          },
+          "hasValidToolCheckAnalysis": {
+            "type": "boolean",
+            "description": "True, wenn nach der letzten Änderung des Programms eine ToolcheckAnalyse durchgeführt wurde,"
+          },
+          "md5ChecksumAsHex": {
+            "type": "string",
+            "description": "Checksumme hex encoded",
+            "nullable": true
+          },
+          "md5ChecksumAsBase64": {
+            "type": "string",
+            "description": "Checksum Base64 encoded",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Infos about a program"
+      },
+      "ProgramStartParameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The path referencing the program to execute.\r\nI.E. machine:program.simpl, device:DEVICENAME\\program.simpl",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Parameters to execute a program"
+      },
+      "Receiver": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "some unique receiver identifier",
+            "format": "int32"
+          },
+          "value": {
+            "type": "string",
+            "description": "the actual receiver",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "description": "'sms' or 'whatsapp' or 'email' or 'telegram'",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Receiver"
+      },
+      "RefreshUserLibraryFolderResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Refresh user library folder result."
+      },
+      "RemoteLinkProgram": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Program name",
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "Previewimage URL",
+            "nullable": true
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Programfile name",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A Remote Link Program Description"
+      },
+      "RemoteLinkProgramFileName": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the program file",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Description of the program file"
+      },
+      "RemoteLinkPrograms": {
+        "type": "object",
+        "properties": {
+          "programs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemoteLinkProgram"
+            },
+            "description": "Enumeration of Remote Link Programs",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Remote Link Programs"
+      },
+      "Rule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "some unique rule identifier",
+            "format": "int32"
+          },
+          "ruleType": {
+            "type": "string",
+            "description": "'programfinished' | 'programInterrupted' | 'expectedRuntime' | 'toolWornOut'",
+            "nullable": true
+          },
+          "receiverIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "the receivers to be notified",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "the name of the rule. Some arbitrary string.",
+            "nullable": true
+          },
+          "parameters": {
+            "description": "specific parameters for this rule",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Rule definition"
+      },
+      "Runtime": {
+        "type": "object",
+        "properties": {
+          "spindleRuntimeHours": {
+            "type": "number",
+            "description": "Overall spindle runtime in hours",
+            "format": "double"
+          },
+          "machineRuntimeHours": {
+            "type": "number",
+            "description": "Overall machine runtime in hours",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Runtime Informations"
+      },
+      "SignInData": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "Username",
+            "nullable": true
+          },
+          "password": {
+            "type": "string",
+            "description": "Password",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Userdata"
+      },
+      "SpraySystemStatus": {
+        "type": "object",
+        "properties": {
+          "datronEkd": {
+            "$ref": "#/components/schemas/DatronEkdStatus"
+          },
+          "microjet": {
+            "$ref": "#/components/schemas/Microjet"
+          }
+        },
+        "additionalProperties": false,
+        "description": "encapsulates the spray system state"
+      },
+      "StatusLight": {
+        "type": "object",
+        "properties": {
+          "red": {
+            "type": "integer",
+            "description": "Red intensity [0...255]",
+            "format": "int32"
+          },
+          "green": {
+            "type": "integer",
+            "description": "Green intensity [0...255]",
+            "format": "int32"
+          },
+          "blue": {
+            "type": "integer",
+            "description": "Blue intensity [0...255]",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents the status LED color of the machine."
+      },
+      "StatusMessageType": {
+        "enum": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "type": "integer",
+        "description": "Status message type",
+        "format": "int32",
+        "x-enumNames": [
+          "Temporary",
+          "Info",
+          "Error",
+          "Warning"
+        ]
+      },
+      "StringVariable": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "The string value.",
+            "nullable": true
+          },
+          "name": {
+            "pattern": "(?=^((?!\\babort\\b|\\baction\\b|\\band\\b|\\bany\\b|\\bappend\\b|\\bassignable\\b|\\bas\\b|\\bat\\b|\\bboolean\\b|\\bbreak\\b|\\bcase\\b|\\bcontains\\b|\\bdeletesavedvalueof\\b|\\belse\\b|\\bend\\b|\\bendcase\\b|\\bendfor\\b|\\bendforeach\\b|\\bendif\\b|\\bendwhile\\b|\\bendfunction\\b|\\bendprogram\\b|\\benumeration\\b|\\bexcept\\b|\\bexit\\b|\\bexport\\b|\\bextern\\b|\\bfor\\b|\\bforeach\\b|\\bfrom\\b|\\bfunction\\b|\\bgoto\\b|\\bhassavedvalue\\b|\\bhasvalue\\b|\\bif\\b|\\bimport\\b|\\bin\\b|\\binsert\\b|\\bintersect\\b|\\binto\\b|\\bis\\b|\\bloadvalueof\\b|\\bmodule\\b|\\bnot\\b|\\bnullvalueof\\b|\\bnumber\\b|\\boptional\\b|\\bor\\b|\\bprogram\\b|\\breference\\b|\\bremove\\b|\\bresize\\b|\\breturn\\b|\\breturns\\b|\\bsavevalueof\\b|\\bsequence\\b|\\bsizeof\\b|\\bstep\\b|\\bstring\\b|\\bstructure\\b|\\bto\\b|\\bunion\\b|\\busermodule\\b|\\busing\\b|\\bwhile\\b|\\bxor\\b).)).*^(?:[A-Za-zäöüß][0-9A-Za-zäöüß_]*)+$",
+            "type": "string",
+            "description": "Name of the variable. Name is validated according to the simpl variable naming rules.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a string value"
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "Username",
+            "nullable": true
+          },
+          "token": {
+            "type": "string",
+            "description": "JWT Bearer Token",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Reponse for requesting token"
+      },
+      "Tool": {
+        "type": "object",
+        "properties": {
+          "dominatingProperty": {
+            "$ref": "#/components/schemas/GeometricalAttribute"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ToolCategory"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description",
+            "nullable": true
+          },
+          "toolId": {
+            "type": "integer",
+            "description": "non-chaning, immutable tool identifier",
+            "format": "int32"
+          },
+          "shankGroup": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeometricalAttribute"
+            },
+            "description": "Shankgroup properties",
+            "nullable": true
+          },
+          "toricCutGroup": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeometricalAttribute"
+            },
+            "description": "Toric cut group",
+            "nullable": true
+          },
+          "toolLengthGroup": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeometricalAttribute"
+            },
+            "description": "tool length group",
+            "nullable": true
+          },
+          "fluteGroup": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeometricalAttribute"
+            },
+            "description": "flute length group",
+            "nullable": true
+          },
+          "realGeometry": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeometricalProperty"
+            },
+            "description": "current real measures geometry",
+            "nullable": true,
+            "readOnly": true
+          },
+          "nominalGeometry": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeometricalProperty"
+            },
+            "description": "nominal tool geometry",
+            "nullable": true,
+            "readOnly": true
+          },
+          "vendor": {
+            "type": "string",
+            "description": "Vendor",
+            "nullable": true,
+            "readOnly": true
+          },
+          "maxToolPath": {
+            "type": "number",
+            "description": "max. tool path",
+            "format": "double",
+            "nullable": true,
+            "readOnly": true
+          },
+          "maxToolLife": {
+            "type": "number",
+            "description": "max. tool life",
+            "format": "double",
+            "nullable": true,
+            "readOnly": true
+          },
+          "articleNumber": {
+            "type": "string",
+            "description": "article number",
+            "nullable": true,
+            "readOnly": true
+          },
+          "currentTotalPath": {
+            "type": "number",
+            "description": "current total path",
+            "format": "double",
+            "nullable": true,
+            "readOnly": true
+          },
+          "currentTotalLife": {
+            "type": "number",
+            "description": "current total life",
+            "format": "double",
+            "nullable": true,
+            "readOnly": true
+          },
+          "name": {
+            "type": "string",
+            "description": "name",
+            "nullable": true,
+            "readOnly": true
+          },
+          "toolNumber": {
+            "type": "integer",
+            "description": "number",
+            "format": "int32",
+            "readOnly": true
+          },
+          "comment": {
+            "type": "string",
+            "description": "comment",
+            "nullable": true,
+            "readOnly": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "base image url to request a preview image",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a Tool"
+      },
+      "ToolCategory": {
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29
+        ],
+        "type": "integer",
+        "format": "int32",
+        "x-enumNames": [
+          "Unspecified",
+          "Drill",
+          "DrillCenter",
+          "DrillSpot",
+          "DrillBlock",
+          "MillingEndFlat",
+          "MillingEndBall",
+          "MillingEndBullnose",
+          "MillingChamfer",
+          "MillingFace",
+          "MillingSlot",
+          "MillingRadius",
+          "MillingDovetail",
+          "MillingTapered",
+          "MillingLollipop",
+          "TapRightHand",
+          "TapLeftHand",
+          "Reamer",
+          "BoringBar",
+          "CounterBore",
+          "CounterSink",
+          "HolderOnly",
+          "Probe",
+          "Camera",
+          "XYZSensor",
+          "Graver",
+          "MillingThread",
+          "Suction",
+          "SpecialTool",
+          "CustomTool"
+        ]
+      },
+      "ToolCategoryDescription": {
+        "type": "object",
+        "properties": {
+          "drill": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, TipAngle, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingEndFlat": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingEndBall": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, ShoulderDiameter,ShoulderLength,ShaftDiameter,BodyLength,OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingEndBullnose": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, CornerRadius, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingChamfer": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, TaperAngle, TipDiameter, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingFace": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingSlot": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, CornerRadius, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingRadius": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter, TipDiameter\r\n\r\nDescriptive Elements:\r\n\r\nTipDiameter, FluteLength, NumberOfFlutes, CornerRadius, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingDovetail": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, CornerRadius, TipAngle, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "counterSink": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, TaperAngle, TipDiameter, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "graver": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter, TipDiameter\r\n\r\nDescriptive Elements:\r\n\r\nTipAngle, TipDiameter, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          },
+          "millingThread": {
+            "type": "string",
+            "description": "Mandatory Elements:\r\n\r\nDiameter, ThreadAngle\r\n\r\nDescriptive Elements:\r\n\r\nFluteLength, NumberOfFlutes, ThreadAngle, ShoulderDiameter, ShoulderLength, ShaftDiameter, BodyLength, OverallLength",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Description of the tool category enumeration and their descriptive and mandatory Elements."
+      },
+      "UploadBinaryFileParameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The location that the file will be written to in SimPL Syntax (i.e. machine:folder/file.simpl)",
+            "nullable": true
+          },
+          "base64Content": {
+            "type": "string",
+            "description": "The content written to the file. Has to be encoded in Base64 format",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Parameters to upload a file to be stored on the filesystem"
+      },
+      "UploadTextFileParameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The location that the file will be written to in SimPL Syntax (i.e. machine:folder/file.simpl)",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "description": "The content written to the file.\r\nQuotation marks have to be escaped using the '\\' character to make the json serialization possible.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Parameters to upload a file to be stored on the filesystem"
+      },
+      "UserClaims": {
+        "type": "object",
+        "properties": {
+          "apiBasic": {
+            "type": "boolean",
+            "description": "API Basic"
+          },
+          "apiAutomation": {
+            "type": "boolean",
+            "description": "API Automation"
+          },
+          "cockpitApp": {
+            "type": "boolean",
+            "description": "Cockpit App"
+          },
+          "cameraApp": {
+            "type": "boolean",
+            "description": "Camera App"
+          },
+          "remoteLinkApp": {
+            "type": "boolean",
+            "description": "Remote Link App"
+          },
+          "alertApp": {
+            "type": "boolean",
+            "description": "Alert App"
+          },
+          "alertAppPolicyAccepted": {
+            "type": "boolean",
+            "description": "AlertApp Policy Accepted"
+          },
+          "sub": {
+            "type": "string",
+            "description": "The subject",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "user permissions"
+      },
+      "VacuumStatus": {
+        "type": "object",
+        "properties": {
+          "digitalSensor": {
+            "$ref": "#/components/schemas/DigitalSensor"
+          },
+          "analogSensor": {
+            "$ref": "#/components/schemas/AnalogSensor"
+          },
+          "isActivated": {
+            "type": "boolean",
+            "description": "vacuum enabled by user"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a vacuum state"
+      },
+      "VerifiedProgramStartParameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The path referencing the program to execute.\r\nI.E. machine:program.simpl, device:DEVICENAME\\program.simpl",
+            "nullable": true
+          },
+          "checksum": {
+            "type": "string",
+            "description": "MD5 checksum as hex or base64 encoded string. See the results from GetProgramFileInfo.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Parameters to execute a program"
+      },
+      "VoidResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Represents a void result"
+      },
+      "WorkpieceSetup": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the coordinate system",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the coordinate system",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Is this coordinate system active"
+          },
+          "isLocked": {
+            "type": "boolean",
+            "description": "Is this coordinate system locked"
+          },
+          "translationX": {
+            "type": "number",
+            "description": "Translation in X [mm]",
+            "format": "double"
+          },
+          "translationY": {
+            "type": "number",
+            "description": "Translation in Y [mm]",
+            "format": "double"
+          },
+          "translationZ": {
+            "type": "number",
+            "description": "Translation in Z [mm]",
+            "format": "double"
+          },
+          "rotationA": {
+            "type": "number",
+            "description": "Rotation in A (around X-Axis) [°]",
+            "format": "double"
+          },
+          "rotationB": {
+            "type": "number",
+            "description": "Rotation in B (around Y-Axis) [°]",
+            "format": "double"
+          },
+          "rotationC": {
+            "type": "number",
+            "description": "Rotation in C (around Z-Axis) [°]",
+            "format": "double"
+          },
+          "scaleX": {
+            "type": "number",
+            "description": "Scale in X",
+            "format": "double"
+          },
+          "scaleY": {
+            "type": "number",
+            "description": "Scale in Y",
+            "format": "double"
+          },
+          "scaleZ": {
+            "type": "number",
+            "description": "Scale in Z",
+            "format": "double"
+          },
+          "mirrorX": {
+            "type": "boolean",
+            "description": "Mirror in X enabled"
+          },
+          "mirrorY": {
+            "type": "boolean",
+            "description": "Mirror in Y enabled"
+          },
+          "mirrorZ": {
+            "type": "boolean",
+            "description": "Mirror in Z enabled"
+          },
+          "offsetA": {
+            "type": "number",
+            "description": "Offset of the A-Axis [°]",
+            "format": "double"
+          },
+          "offsetB": {
+            "type": "number",
+            "description": "Offset of the B-Axis [°]",
+            "format": "double"
+          },
+          "offsetC": {
+            "type": "number",
+            "description": "Offset of the C-Axis [°]",
+            "format": "double"
+          },
+          "scaleA": {
+            "type": "number",
+            "description": "Scale in A",
+            "format": "double"
+          },
+          "scaleB": {
+            "type": "number",
+            "description": "Scale in B",
+            "format": "double"
+          },
+          "scaleC": {
+            "type": "number",
+            "description": "Scale in C",
+            "format": "double"
+          },
+          "mirrorA": {
+            "type": "boolean",
+            "description": "Mirror in A enabled"
+          },
+          "mirrorB": {
+            "type": "boolean",
+            "description": "Mirror in B enabled"
+          },
+          "mirrorC": {
+            "type": "boolean",
+            "description": "Mirror in C enabled"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a workpiece-setup"
+      },
+      "WorkpieceUpdateParameter": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the coordinate system",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the coordinate system",
+            "nullable": true
+          },
+          "translationX": {
+            "type": "number",
+            "description": "Translation in X [mm]",
+            "format": "double",
+            "nullable": true
+          },
+          "translationY": {
+            "type": "number",
+            "description": "Translation in Y [mm]",
+            "format": "double",
+            "nullable": true
+          },
+          "translationZ": {
+            "type": "number",
+            "description": "Translation in Z [mm]",
+            "format": "double",
+            "nullable": true
+          },
+          "rotationA": {
+            "type": "number",
+            "description": "Rotation in A (around X-Axis) [°]",
+            "format": "double",
+            "nullable": true
+          },
+          "rotationB": {
+            "type": "number",
+            "description": "Rotation in B (around Y-Axis) [°]",
+            "format": "double",
+            "nullable": true
+          },
+          "rotationC": {
+            "type": "number",
+            "description": "Rotation in C (around Z-Axis) [°]",
+            "format": "double",
+            "nullable": true
+          },
+          "scaleX": {
+            "type": "number",
+            "description": "Scale in X",
+            "format": "double",
+            "nullable": true
+          },
+          "scaleY": {
+            "type": "number",
+            "description": "Scale in Y",
+            "format": "double",
+            "nullable": true
+          },
+          "scaleZ": {
+            "type": "number",
+            "description": "Scale in Z",
+            "format": "double",
+            "nullable": true
+          },
+          "mirrorX": {
+            "type": "boolean",
+            "description": "Mirror in X enabled",
+            "nullable": true
+          },
+          "mirrorY": {
+            "type": "boolean",
+            "description": "Mirror in Y enabled",
+            "nullable": true
+          },
+          "mirrorZ": {
+            "type": "boolean",
+            "description": "Mirror in Z enabled",
+            "nullable": true
+          },
+          "offsetA": {
+            "type": "number",
+            "description": "Offset of the A-Axis [°]",
+            "format": "double",
+            "nullable": true
+          },
+          "offsetB": {
+            "type": "number",
+            "description": "Offset of the B-Axis [°]",
+            "format": "double",
+            "nullable": true
+          },
+          "offsetC": {
+            "type": "number",
+            "description": "Offset of the C-Axis [°]",
+            "format": "double",
+            "nullable": true
+          },
+          "scaleA": {
+            "type": "number",
+            "description": "Scale in A",
+            "format": "double",
+            "nullable": true
+          },
+          "scaleB": {
+            "type": "number",
+            "description": "Scale in B",
+            "format": "double",
+            "nullable": true
+          },
+          "scaleC": {
+            "type": "number",
+            "description": "Scale in C",
+            "format": "double",
+            "nullable": true
+          },
+          "mirrorA": {
+            "type": "boolean",
+            "description": "Mirror in A enabled",
+            "nullable": true
+          },
+          "mirrorB": {
+            "type": "boolean",
+            "description": "Mirror in B enabled",
+            "nullable": true
+          },
+          "mirrorC": {
+            "type": "boolean",
+            "description": "Mirror in C enabled",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Represents a workpiece-setup"
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "apiKey",
+        "description": "JWT Authorization header using the Bearer scheme. \r\nScheme: \"Bearer {token}\".\r\nTo request a new token, use the POST:/api/User/CreateToken. Replace {token} with the received token and remove the brackets. \r\nMake sure you put the word \"Bearer \" in front of it. \r\n\r\n (Important: whitespace between Bearer and {token}) ",
+        "name": "Authorization",
+        "in": "header"
+      }
+    }
+  },
+  "security": [
+    {
+      "Bearer": [ ]
+    }
+  ]
+}

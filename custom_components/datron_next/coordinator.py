@@ -53,6 +53,8 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ("feed_override", self.client.get_feed_override),
                 ("status_light", self.client.get_status_light),
                 ("notifications", self.client.get_notifications),
+                ("cartridge_level", self.client.get_cartridge_level),
+                ("open_dialog", self.client.get_open_dialog),
             ]
             tasks = []
             for key, func in endpoints:

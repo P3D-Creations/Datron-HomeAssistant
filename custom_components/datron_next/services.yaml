@@ -1,0 +1,100 @@
+execute_program_async:
+  name: Execute Program (Async)
+  description: >
+    Execute a program on the machine asynchronously. The call returns
+    immediately after the program is loaded and begins running;
+    monitor the machine_execution_state sensor to track progress.
+    Requires the Automation API license tier.
+  fields:
+    path:
+      name: Program Path
+      description: >
+        SimPL path to the program. Use the format
+        ``machine:ProgramName.simpl`` for programs stored on the
+        machine, or ``device:DEVICENAME\ProgramName.simpl`` for
+        network devices.
+      required: true
+      example: "machine:MyJob.simpl"
+      selector:
+        text:
+
+load_program:
+  name: Load Program
+  description: >
+    Load a program on the machine without executing it immediately.
+    After loading, the currently loaded program sensor will update.
+    Use the Pause/Resume/Abort buttons or execute_program_async to
+    control execution. Requires the Automation API license tier.
+  fields:
+    path:
+      name: Program Path
+      description: >
+        SimPL path to the program, e.g. ``machine:MyJob.simpl``.
+      required: true
+      example: "machine:MyJob.simpl"
+      selector:
+        text:
+
+enumerate_folder_contents:
+  name: Enumerate Folder Contents
+  description: >
+    List the files and subfolders at a given machine path.
+    Returns a response dict with ``files`` and ``subfolders`` arrays.
+    Use in a script with ``response_variable`` to capture the result.
+    Requires the Automation API license tier.
+  fields:
+    path:
+      name: Folder Path
+      description: >
+        SimPL-format path to the folder. Use ``machine:`` for the root,
+        or ``machine:folder/subfolder`` for subdirectories.
+      required: true
+      example: "machine:"
+      selector:
+        text:
+
+get_program_file_info:
+  name: Get Program File Info
+  description: >
+    Return metadata about a program file including its MD5 checksum,
+    last modification time, expected execution duration, and whether a
+    valid tool-check analysis exists.
+    Returns a response dict — use with ``response_variable`` in scripts.
+    Requires the Automation API license tier.
+  fields:
+    path:
+      name: Program Path
+      description: >
+        SimPL path to the program, e.g. ``machine:MyJob.simpl``.
+      required: true
+      example: "machine:MyJob.simpl"
+      selector:
+        text:
+
+confirm_dialog:
+  name: Confirm Dialog
+  description: >
+    Confirm (or dismiss) the currently open machine dialog by clicking
+    a specific button. Obtain available button labels from the
+    ``open_dialog`` sensor attributes (``left_buttons`` / ``right_buttons``).
+    Requires the Automation API license tier.
+  fields:
+    button:
+      name: Button Label
+      description: >
+        Exact label of the button to click, as shown in the
+        ``open_dialog`` sensor's ``left_buttons`` or ``right_buttons``
+        attribute lists.
+      required: true
+      example: "OK"
+      selector:
+        text:
+    dialog_id:
+      name: Dialog ID (optional)
+      description: >
+        UUID of the dialog to confirm. If omitted, the currently open
+        dialog detected by the sensor is used automatically.
+      required: false
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:

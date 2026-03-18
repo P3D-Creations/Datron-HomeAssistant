@@ -298,6 +298,96 @@ class DatronApiClient:
             params["token"] = token
         return await self._get("/Image/Tool", params=params)
 
+    # ── Cartridge ────────────────────────────────────────────
+
+    async def get_cartridge_level(self) -> float | None:
+        """Get current cartridge fill level (0–100%).
+
+        Returns a plain float, not a dict.
+        """
+        return await self._get("/Cartridge/CurrentLevel")
+
+    # ── Dialog ───────────────────────────────────────────────
+
+    async def get_open_dialog(self) -> dict[str, Any] | None:
+        """Get the currently open dialog.
+
+        Returns None (204) when no dialog is open.
+        Response schema: {id, caption, text, details, severity,
+                          leftButtons: [], rightButtons: []}
+        """
+        return await self._get("/Dialog/OpenDialog")
+
+    async def confirm_dialog(self, dialog_id: str, button: str) -> None:
+        """Confirm an open dialog by clicking the specified button label.
+
+        Args:
+            dialog_id: UUID from the Dialog response.
+            button: Exact label of the button to click (from leftButtons/rightButtons).
+        """
+        await self._post(
+            "/Dialog/ConfirmDialog",
+            json={"id": dialog_id, "button": button},
+        )
+
+    # ── Execution control (Automation API) ───────────────────
+
+    async def pause_execution(self) -> dict[str, Any]:
+        """Pause the current program execution."""
+        return await self._post("/Execution/Pause")
+
+    async def resume_execution(self) -> dict[str, Any]:
+        """Resume a paused program execution."""
+        return await self._post("/Execution/Resume")
+
+    async def abort_execution(self) -> dict[str, Any]:
+        """Abort the currently running program."""
+        return await self._post("/Execution/Abort")
+
+    async def move_to_park_position(self) -> dict[str, Any]:
+        """Move the spindle to the park position."""
+        return await self._post("/Execution/MoveToParkPosition")
+
+    async def load_program(self, path: str) -> dict[str, Any]:
+        """Load a program without executing it.
+
+        Path format: ``machine:program.simpl`` or
+        ``device:DEVICENAME\\\\program.simpl``.
+        Returns ExecutionResult {resultCode: str}.
+        """
+        return await self._post("/Execution/LoadProgram", json={"path": path})
+
+    async def execute_program_async(self, path: str) -> dict[str, Any]:
+        """Execute a program asynchronously.
+
+        Returns immediately after the program is loaded; execution continues
+        in the background. Returns ExecutionResult {resultCode: str}.
+        """
+        return await self._post(
+            "/Execution/ExecuteProgramAsync", json={"path": path}
+        )
+
+    async def get_program_file_info(self, path: str) -> dict[str, Any]:
+        """Return metadata for a program file.
+
+        Returns ProgramFileInfo:
+          {latestChangeTime, expectedExecutionDuration,
+           hasValidToolCheckAnalysis, md5ChecksumAsHex, md5ChecksumAsBase64}
+        """
+        return await self._get("/Execution/ProgramFileInfo", params={"path": path})
+
+    # ── File system ──────────────────────────────────────────
+
+    async def enumerate_folder_contents(self, path: str) -> dict[str, Any]:
+        """List files and subfolders at a SimPL-format path.
+
+        Path syntax: ``machine:folder/subfolder`` or ``machine:`` for root.
+        Returns FolderContentNames: {files: [], subfolders: []}.
+        """
+        return await self._get(
+            "/FileSystem/EnumerateFolderContents", params={"path": path}
+        )
+
     # ── User ─────────────────────────────────────────────────
 
     async def get_user_info(self) -> dict[str, Any]:
