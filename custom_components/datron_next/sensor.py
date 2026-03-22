@@ -20,6 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
 from .const import COORD_FAST, COORD_MEDIUM, COORD_SLOW, DOMAIN
+from .execution_sensor import DatronCycleHistorySensor, DatronEstimatedRemainingSensor
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -335,18 +336,18 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "None",
         ),
     ),
-    # Cartridge level
-    DatronSensorEntityDescription(
-        key="cartridge_level",
-        name="Cartridge Level",
-        icon="mdi:flask-outline",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=0,
-        coordinator_key=COORD_FAST,
-        # API returns a plain float, not a dict
-        value_fn=lambda d: _safe_get(d, "cartridge_level"),
-    ),
+#    # Cartridge level
+#    DatronSensorEntityDescription(
+#        key="cartridge_level",
+#        name="Cartridge Level",
+#        icon="mdi:flask-outline",
+#        native_unit_of_measurement=PERCENTAGE,
+#        state_class=SensorStateClass.MEASUREMENT,
+#        suggested_display_precision=0,
+#        coordinator_key=COORD_FAST,
+#        # API returns a plain float, not a dict
+#        value_fn=lambda d: _safe_get(d, "cartridge_level"),
+#    ),
     # Open dialog
     DatronSensorEntityDescription(
         key="open_dialog",
@@ -521,7 +522,7 @@ async def async_setup_entry(
         COORD_SLOW: data[COORD_SLOW],
     }
 
-    entities = [
+    entities: list = [
         DatronSensor(
             coordinator=coordinators[desc.coordinator_key],
             description=desc,
@@ -529,6 +530,22 @@ async def async_setup_entry(
         )
         for desc in ALL_SENSORS
     ]
+
+    # ── Stateful execution sensors ────────────────────────────────────
+    estimated_remaining = DatronEstimatedRemainingSensor(
+        coordinator=data[COORD_FAST],
+        entry=entry,
+    )
+    cycle_history = DatronCycleHistorySensor(
+        hass=hass,
+        coordinator=data[COORD_FAST],
+        entry=entry,
+    )
+    # Load persisted cycle history before the entity is registered so the
+    # first state write includes any existing records.
+    await cycle_history.async_load_history()
+
+    entities.extend([estimated_remaining, cycle_history])
     async_add_entities(entities)
 
 
