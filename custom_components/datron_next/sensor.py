@@ -30,6 +30,7 @@ class DatronSensorEntityDescription(SensorEntityDescription):
     coordinator_key: str
     value_fn: Callable[[dict[str, Any]], Any]
     attributes_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    force_update: bool = False
 
 
 def _safe_get(data: dict, *keys: str, default: Any = None) -> Any:
@@ -119,7 +120,9 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "execution", "programmLeftTime"),
     ),
-    # Axis positions
+    # Axis positions — force_update=True so HA always records a new state
+    # entry on every poll cycle, making it clear the sensor IS updating
+    # even when the machine's X/Y position hasn't changed.
     DatronSensorEntityDescription(
         key="axis_x",
         name="Axis X Position",
@@ -129,6 +132,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         suggested_display_precision=3,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "axes", "x"),
+        force_update=True,
     ),
     DatronSensorEntityDescription(
         key="axis_y",
@@ -139,6 +143,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         suggested_display_precision=3,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "axes", "y"),
+        force_update=True,
     ),
     DatronSensorEntityDescription(
         key="axis_z",
@@ -149,6 +154,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         suggested_display_precision=3,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "axes", "z"),
+        force_update=True,
     ),
     DatronSensorEntityDescription(
         key="axis_a",
@@ -159,6 +165,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         suggested_display_precision=3,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "axes", "a"),
+        force_update=True,
     ),
     DatronSensorEntityDescription(
         key="axis_b",
@@ -169,6 +176,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         suggested_display_precision=3,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "axes", "b"),
+        force_update=True,
     ),
     DatronSensorEntityDescription(
         key="axis_c",
@@ -179,6 +187,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         suggested_display_precision=3,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "axes", "c"),
+        force_update=True,
     ),
     # Compressed air
     DatronSensorEntityDescription(
@@ -564,6 +573,7 @@ class DatronSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
+        self._attr_force_update = description.force_update
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},

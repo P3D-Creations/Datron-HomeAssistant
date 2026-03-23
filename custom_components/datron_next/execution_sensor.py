@@ -24,7 +24,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, UnitOfTime
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.storage import Store
@@ -113,13 +113,11 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
     _attr_name = "Estimated Remaining Time"
     _attr_icon = "mdi:timer-sand"
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_suggested_display_precision = 0
+    # State is a human-readable HH:MM:SS string — no unit or numeric state class
 
     # Tunable parameters
-    WINDOW_SECONDS: float = 180.0   # 3-minute rolling window
-    MIN_SAMPLES: int = 3            # minimum points before regression is used
+    WINDOW_SECONDS: float = 300.0   # 5-minute rolling window
+    MIN_SAMPLES: int = 15           # minimum points before regression is used
     MIN_SPEED: float = 0.05         # below this the machine is considered paused
     MAX_SPEED: float = 1.0          # remaining cannot shrink faster than elapsed
 
@@ -233,10 +231,11 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         self.async_write_ha_state()
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> str | None:
+        """Return estimated remaining time as HH:MM:SS, or None if no program is running."""
         if self._estimated_s is None:
             return None
-        return round(self._estimated_s)
+        return _fmt_duration(self._estimated_s)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

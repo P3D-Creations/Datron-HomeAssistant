@@ -86,6 +86,15 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     else:
                         _LOGGER.debug("FAST %s: %s (%s)", key, val, type(val).__name__)
 
+            # Always log axis positions so stale-value issues are diagnosable
+            axes = data.get("axes")
+            if isinstance(axes, dict):
+                _LOGGER.debug(
+                    "[COORD] Axes: X=%.3f Y=%.3f Z=%.3f A=%.3f B=%.3f C=%.3f",
+                    axes.get("x", 0), axes.get("y", 0), axes.get("z", 0),
+                    axes.get("a", 0), axes.get("b", 0), axes.get("c", 0),
+                )
+
             elapsed = time.monotonic() - poll_start
             _LOGGER.debug("[COORD] Fast poll: finished all endpoints in %.3fs", elapsed)
             return data
