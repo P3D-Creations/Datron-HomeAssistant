@@ -27,3 +27,9 @@ node_modules/
 
 # Home Assistant
 config/
+
+#supporting files that may contain sensitive info
+.github\prompts/
+API Reference/
+chat_log.md
+project_notes.md
