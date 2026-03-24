@@ -100,7 +100,7 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
 
 class DatronAxisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator for axis positions (10s).
+    """Coordinator for axis positions with exponential back-off.
 
     Dedicated coordinator because the ``AxisPositions`` endpoint on many
     Datron machines takes 15-20+ seconds during program execution, which
@@ -108,7 +108,20 @@ class DatronAxisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     Uses ``get_axis_positions_direct()`` which bypasses the API-client
     polling semaphore and has its own 30 s timeout.
+
+    Back-off strategy:
+    - Starts at ``SCAN_INTERVAL_AXIS`` (10 s).
+    - After each consecutive failure the interval doubles, up to 5 min.
+    - A single success resets the interval and failure counter.
+    - Log spam is reduced: failures are logged on the 1st, 5th, and
+      then every 10th consecutive failure.
     """
+
+    _MAX_INTERVAL = 300  # 5 minutes
+
+    _DEFAULT_AXES: dict[str, Any] = {
+        "axes": {"x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0, "b": 0.0, "c": 0.0}
+    }
 
     def __init__(self, hass: HomeAssistant, client: DatronApiClient) -> None:
         """Initialize the axis coordinator."""
@@ -119,10 +132,20 @@ class DatronAxisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=SCAN_INTERVAL_AXIS),
         )
         self.client = client
+        self._consecutive_failures: int = 0
 
-    _DEFAULT_AXES: dict[str, Any] = {
-        "axes": {"x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0, "b": 0.0, "c": 0.0}
-    }
+    def _backoff_interval(self) -> timedelta:
+        """Return the next poll interval based on consecutive failures."""
+        secs = min(
+            SCAN_INTERVAL_AXIS * (2 ** self._consecutive_failures),
+            self._MAX_INTERVAL,
+        )
+        return timedelta(seconds=secs)
+
+    def _should_log_failure(self) -> bool:
+        """Only log on 1st, 5th, and every 10th consecutive failure."""
+        n = self._consecutive_failures
+        return n == 1 or n == 5 or n % 10 == 0
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch axis positions from the API (bypasses polling semaphore).
@@ -139,13 +162,35 @@ class DatronAxisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     axes.get("x", 0), axes.get("y", 0), axes.get("z", 0),
                     axes.get("a", 0), axes.get("b", 0), axes.get("c", 0),
                 )
+            # Success — reset back-off
+            if self._consecutive_failures > 0:
+                _LOGGER.info(
+                    "[COORD] Axis poll recovered after %d consecutive failures",
+                    self._consecutive_failures,
+                )
+            self._consecutive_failures = 0
+            self.update_interval = timedelta(seconds=SCAN_INTERVAL_AXIS)
             return {"axes": axes}
         except DatronAuthError as err:
-            _LOGGER.warning("[COORD] Axis poll auth error: %s", err)
+            self._consecutive_failures += 1
+            if self._should_log_failure():
+                _LOGGER.warning("[COORD] Axis poll auth error (%d): %s", self._consecutive_failures, err)
         except DatronApiError as err:
-            _LOGGER.warning("[COORD] Axis poll failed: %s", err)
+            self._consecutive_failures += 1
+            if self._should_log_failure():
+                _LOGGER.warning(
+                    "[COORD] Axis poll failed (%d, next retry in %ds): %s",
+                    self._consecutive_failures,
+                    min(SCAN_INTERVAL_AXIS * (2 ** self._consecutive_failures), self._MAX_INTERVAL),
+                    err,
+                )
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("[COORD] Axis poll unexpected error: %s", err)
+            self._consecutive_failures += 1
+            if self._should_log_failure():
+                _LOGGER.warning("[COORD] Axis poll unexpected error (%d): %s", self._consecutive_failures, err)
+
+        # Apply back-off for next cycle
+        self.update_interval = self._backoff_interval()
 
         # Return stale data or default zeros — never raise UpdateFailed
         return self.data if self.data else self._DEFAULT_AXES

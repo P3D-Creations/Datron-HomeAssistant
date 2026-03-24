@@ -87,7 +87,10 @@ class DatronApiClient:
                     if resp.status == 401:
                         raise DatronAuthError("Authentication failed — invalid or expired token")
                     if resp.status == 403:
-                        raise DatronAuthError("Forbidden — insufficient API license tier")
+                        body = await resp.text()
+                        raise DatronAuthError(
+                            f"Forbidden for {path}: {body or 'insufficient API license tier'}"
+                        )
                     if resp.status >= 400:
                         text = await resp.text()
                         raise DatronApiError(
@@ -137,8 +140,12 @@ class DatronApiClient:
                             "Authentication failed — invalid or expired token"
                         )
                     if resp.status == 403:
-                        raise DatronAuthError(
-                            "Forbidden — insufficient API license tier"
+                        body = await resp.text()
+                        # 403 on a command often means the action is
+                        # invalid in the current machine state, not
+                        # necessarily a license problem.
+                        raise DatronApiError(
+                            f"Forbidden for {path}: {body or 'insufficient API license tier'}"
                         )
                     if resp.status >= 400:
                         text = await resp.text()
