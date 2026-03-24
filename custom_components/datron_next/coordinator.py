@@ -120,8 +120,17 @@ class DatronAxisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.client = client
 
+    _DEFAULT_AXES: dict[str, Any] = {
+        "axes": {"x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0, "b": 0.0, "c": 0.0}
+    }
+
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch axis positions from the API (bypasses polling semaphore)."""
+        """Fetch axis positions from the API (bypasses polling semaphore).
+
+        Never raises ``UpdateFailed`` so the integration can always load
+        even when the AxisPositions endpoint is unreachable or slow.
+        Sensors will show 0.0 until a successful poll returns real data.
+        """
         try:
             axes = await self.client.get_axis_positions_direct()
             if isinstance(axes, dict):
@@ -132,13 +141,14 @@ class DatronAxisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             return {"axes": axes}
         except DatronAuthError as err:
-            raise UpdateFailed(f"Authentication error: {err}") from err
+            _LOGGER.warning("[COORD] Axis poll auth error: %s", err)
         except DatronApiError as err:
             _LOGGER.warning("[COORD] Axis poll failed: %s", err)
-            # Return stale data so sensors keep their last-known value
-            if self.data:
-                return self.data
-            raise UpdateFailed(f"Axis poll error: {err}") from err
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("[COORD] Axis poll unexpected error: %s", err)
+
+        # Return stale data or default zeros — never raise UpdateFailed
+        return self.data if self.data else self._DEFAULT_AXES
 
 
 class DatronMediumCoordinator(DataUpdateCoordinator[dict[str, Any]]):
