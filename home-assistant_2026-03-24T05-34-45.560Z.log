@@ -1,0 +1,119 @@
+s6-rc: info: service s6rc-oneshot-runner: starting
+s6-rc: info: service s6rc-oneshot-runner successfully started
+s6-rc: info: service fix-attrs: starting
+s6-rc: info: service fix-attrs successfully started
+s6-rc: info: service legacy-cont-init: starting
+s6-rc: info: service legacy-cont-init successfully started
+s6-rc: info: service legacy-services: starting
+services-up: info: copying legacy longrun home-assistant (no readiness notification)
+s6-rc: info: service legacy-services successfully started
+2026-03-24 01:24:21.884 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration kaeser_sc2 which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:21.887 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration remote_homeassistant which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:21.889 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration hacs which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:21.891 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration frigate which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:21.892 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration bubble_card_tools which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:21.894 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration datron_next which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:21.895 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration localtuya which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:21.897 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration webrtc which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2026-03-24 01:24:37.608 WARNING (MainThread) [homeassistant.components.sensor] Setup of sensor platform statistics is taking over 10 seconds.
+2026-03-24 01:24:38.973 WARNING (MainThread) [homeassistant.components.sensor] Setup of sensor platform statistics is taking over 10 seconds.
+2026-03-24 01:24:56.919 WARNING (MainThread) [homeassistant.components.scrape.sensor] Index '0' not found in sensor.kaeser_aircenter_5c_pressure
+2026-03-24 01:25:03.714 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.186s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:25:03.793 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:25:03.793 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:25:36.974 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 16.375s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:25:37.202 INFO (MainThread) [backoff] Backing off async_request(...) for 0.7s (tesla_wall_connector.exceptions.WallConnectorConnectionTimeoutError: Timeout while connecting to Wall Connector at 192.168.3.36)
+2026-03-24 01:25:37.513 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:25:37.513 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:25:56.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.500s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:25:56.758 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:25:56.759 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:26:16.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.479s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:26:16.791 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:26:16.791 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:26:36.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.503s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:26:36.801 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:26:36.801 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:26:56.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.511s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:26:56.884 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:26:56.885 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:27:16.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.533s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:27:16.772 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:27:16.773 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:27:36.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.518s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:27:36.792 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:27:36.793 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:27:56.724 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.554s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:27:56.791 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:27:56.791 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:28:16.711 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.539s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:28:16.764 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:28:16.764 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:28:36.711 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.563s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:28:36.781 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:28:36.781 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:28:56.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.529s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:28:56.789 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:28:56.790 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:29:16.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.564s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:29:16.808 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:29:16.808 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:29:36.711 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.562s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:29:36.784 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:29:36.785 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:29:56.714 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.526s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:29:56.858 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:29:56.859 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:30:16.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.556s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:30:16.760 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:30:16.761 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:30:36.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.563s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:30:36.777 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:30:36.777 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:30:56.711 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.517s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:30:56.787 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:30:56.787 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:31:16.711 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.539s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:31:16.799 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:31:16.800 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:31:36.711 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.544s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:31:36.823 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:31:36.824 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:31:56.711 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.559s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:31:56.788 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:31:56.788 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:02.727 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:07.369 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:12.183 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:16.204 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:20.225 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:24.205 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:28.203 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:33.158 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:37.420 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:41.241 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:45.228 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:32:49.215 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:09.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.520s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:33:09.781 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:33:09.781 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:29.712 ERROR (MainThread) [custom_components.datron_next.api] [API] Timeout after 15.544s for GET http://192.168.2.19:80/api/v2/MachineComponents/AxisPositions
+2026-03-24 01:33:29.774 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch axes: Timeout requesting /MachineComponents/AxisPositions
+2026-03-24 01:33:29.774 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:34.507 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:38.295 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:42.241 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:46.185 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:50.202 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:33:54.219 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:10.939 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:15.227 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:19.329 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:23.213 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:27.275 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:29.047 INFO (MainThread) [custom_components.kaeser_sc2.api] Logged in to http://192.168.2.230 (Session-Id=9f119fd8419b52813502a8c045fa678f)
+2026-03-24 01:34:31.224 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:32.473 DEBUG (MainThread) [custom_components.kaeser_sc2.coordinator] Finished fetching kaeser_sc2_Kaeser Airtower 5C data in 3.613 seconds (success: True)
+2026-03-24 01:34:35.203 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:40.093 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition
+2026-03-24 01:34:44.203 WARNING (MainThread) [custom_components.datron_next.coordinator] [COORD] Fast poll: Failed to fetch cartridge_level: API error 400 for /Cartridge/CurrentLevel: The value is only available in the Dispensing Edition

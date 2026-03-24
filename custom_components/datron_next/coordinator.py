@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import DatronApiClient, DatronApiError, DatronAuthError
 from .const import (
     DOMAIN,
+    SCAN_INTERVAL_AXIS,
     SCAN_INTERVAL_FAST,
     SCAN_INTERVAL_MEDIUM,
     SCAN_INTERVAL_SLOW,
@@ -22,9 +23,12 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator for fast-polling data (10s).
+    """Coordinator for fast-polling data (4s).
 
-    Machine status, execution durations, axis positions, sensors, notifications.
+    Machine status, execution durations, sensors, notifications.
+    Axis positions are handled by DatronAxisCoordinator to avoid
+    blocking the fast poll — the AxisPositions endpoint is very slow
+    on some Datron machines.
     """
 
     def __init__(self, hass: HomeAssistant, client: DatronApiClient) -> None:
@@ -46,14 +50,12 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             endpoints = [
                 ("machine_status", self.client.get_machine_status),
                 ("execution", self.client.get_execution_durations),
-                ("axes", self.client.get_axis_positions),
                 ("compressed_air", self.client.get_compressed_air),
                 ("vacuum", self.client.get_vacuum),
                 ("spray_system", self.client.get_spray_system),
                 ("feed_override", self.client.get_feed_override),
                 ("status_light", self.client.get_status_light),
                 ("notifications", self.client.get_notifications),
-                ("cartridge_level", self.client.get_cartridge_level),
                 ("open_dialog", self.client.get_open_dialog),
             ]
             tasks = []
@@ -86,15 +88,6 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     else:
                         _LOGGER.debug("FAST %s: %s (%s)", key, val, type(val).__name__)
 
-            # Always log axis positions so stale-value issues are diagnosable
-            axes = data.get("axes")
-            if isinstance(axes, dict):
-                _LOGGER.debug(
-                    "[COORD] Axes: X=%.3f Y=%.3f Z=%.3f A=%.3f B=%.3f C=%.3f",
-                    axes.get("x", 0), axes.get("y", 0), axes.get("z", 0),
-                    axes.get("a", 0), axes.get("b", 0), axes.get("c", 0),
-                )
-
             elapsed = time.monotonic() - poll_start
             _LOGGER.debug("[COORD] Fast poll: finished all endpoints in %.3fs", elapsed)
             return data
@@ -104,6 +97,48 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except DatronApiError as err:
             _LOGGER.error("[COORD] Fast poll: API error: %s", err)
             raise UpdateFailed(f"API error: {err}") from err
+
+
+class DatronAxisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Coordinator for axis positions (10s).
+
+    Dedicated coordinator because the ``AxisPositions`` endpoint on many
+    Datron machines takes 15-20+ seconds during program execution, which
+    would block the entire fast-poll cycle if it shared the same semaphore.
+
+    Uses ``get_axis_positions_direct()`` which bypasses the API-client
+    polling semaphore and has its own 30 s timeout.
+    """
+
+    def __init__(self, hass: HomeAssistant, client: DatronApiClient) -> None:
+        """Initialize the axis coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_axis",
+            update_interval=timedelta(seconds=SCAN_INTERVAL_AXIS),
+        )
+        self.client = client
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Fetch axis positions from the API (bypasses polling semaphore)."""
+        try:
+            axes = await self.client.get_axis_positions_direct()
+            if isinstance(axes, dict):
+                _LOGGER.debug(
+                    "[COORD] Axes: X=%.3f Y=%.3f Z=%.3f A=%.3f B=%.3f C=%.3f",
+                    axes.get("x", 0), axes.get("y", 0), axes.get("z", 0),
+                    axes.get("a", 0), axes.get("b", 0), axes.get("c", 0),
+                )
+            return {"axes": axes}
+        except DatronAuthError as err:
+            raise UpdateFailed(f"Authentication error: {err}") from err
+        except DatronApiError as err:
+            _LOGGER.warning("[COORD] Axis poll failed: %s", err)
+            # Return stale data so sensors keep their last-known value
+            if self.data:
+                return self.data
+            raise UpdateFailed(f"Axis poll error: {err}") from err
 
 
 class DatronMediumCoordinator(DataUpdateCoordinator[dict[str, Any]]):

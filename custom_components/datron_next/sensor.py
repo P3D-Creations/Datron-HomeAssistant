@@ -19,7 +19,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import COORD_FAST, COORD_MEDIUM, COORD_SLOW, DOMAIN
+from .const import COORD_AXIS, COORD_FAST, COORD_MEDIUM, COORD_SLOW, DOMAIN
 from .execution_sensor import DatronCycleHistorySensor, DatronEstimatedRemainingSensor
 
 
@@ -120,9 +120,9 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "execution", "programmLeftTime"),
     ),
-    # Axis positions — force_update=True so HA always records a new state
-    # entry on every poll cycle, making it clear the sensor IS updating
-    # even when the machine's X/Y position hasn't changed.
+    # Axis positions — on their own dedicated coordinator because the
+    # AxisPositions endpoint is very slow on some Datron machines.
+    # force_update=True so HA always records a new state entry.
     DatronSensorEntityDescription(
         key="axis_x",
         name="Axis X Position",
@@ -130,7 +130,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=3,
-        coordinator_key=COORD_FAST,
+        coordinator_key=COORD_AXIS,
         value_fn=lambda d: _safe_get(d, "axes", "x"),
         force_update=True,
     ),
@@ -141,7 +141,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=3,
-        coordinator_key=COORD_FAST,
+        coordinator_key=COORD_AXIS,
         value_fn=lambda d: _safe_get(d, "axes", "y"),
         force_update=True,
     ),
@@ -152,7 +152,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=3,
-        coordinator_key=COORD_FAST,
+        coordinator_key=COORD_AXIS,
         value_fn=lambda d: _safe_get(d, "axes", "z"),
         force_update=True,
     ),
@@ -163,7 +163,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         native_unit_of_measurement="°",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=3,
-        coordinator_key=COORD_FAST,
+        coordinator_key=COORD_AXIS,
         value_fn=lambda d: _safe_get(d, "axes", "a"),
         force_update=True,
     ),
@@ -174,7 +174,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         native_unit_of_measurement="°",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=3,
-        coordinator_key=COORD_FAST,
+        coordinator_key=COORD_AXIS,
         value_fn=lambda d: _safe_get(d, "axes", "b"),
         force_update=True,
     ),
@@ -185,7 +185,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         native_unit_of_measurement="°",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=3,
-        coordinator_key=COORD_FAST,
+        coordinator_key=COORD_AXIS,
         value_fn=lambda d: _safe_get(d, "axes", "c"),
         force_update=True,
     ),
@@ -345,18 +345,6 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "None",
         ),
     ),
-#    # Cartridge level
-#    DatronSensorEntityDescription(
-#        key="cartridge_level",
-#        name="Cartridge Level",
-#        icon="mdi:flask-outline",
-#        native_unit_of_measurement=PERCENTAGE,
-#        state_class=SensorStateClass.MEASUREMENT,
-#        suggested_display_precision=0,
-#        coordinator_key=COORD_FAST,
-#        # API returns a plain float, not a dict
-#        value_fn=lambda d: _safe_get(d, "cartridge_level"),
-#    ),
     # Open dialog
     DatronSensorEntityDescription(
         key="open_dialog",
@@ -527,6 +515,7 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinators = {
         COORD_FAST: data[COORD_FAST],
+        COORD_AXIS: data[COORD_AXIS],
         COORD_MEDIUM: data[COORD_MEDIUM],
         COORD_SLOW: data[COORD_SLOW],
     }

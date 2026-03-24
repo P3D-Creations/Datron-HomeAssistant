@@ -13,6 +13,7 @@ from .const import API_VERSION
 _LOGGER = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
+AXIS_TIMEOUT = aiohttp.ClientTimeout(total=30)
 COMMAND_TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 # Datron's embedded HTTP server can only handle a small number of
@@ -208,6 +209,41 @@ class DatronApiClient:
         """Get current axis positions (X, Y, Z, A, B, C) in RCS."""
         return await self._get("/MachineComponents/AxisPositions")
 
+    async def get_axis_positions_direct(self) -> dict[str, Any]:
+        """Get axis positions bypassing the polling semaphore.
+
+        The AxisPositions endpoint on some Datron machines is
+        significantly slower than all other endpoints (often > 15 s).
+        This method uses a dedicated HTTP call with a longer timeout
+        and does NOT go through ``_semaphore``, so it cannot block
+        the fast-poll cycle.
+        """
+        if self._session is None:
+            raise DatronApiError("No aiohttp session configured")
+        url = f"{self._base_url}/MachineComponents/AxisPositions"
+        try:
+            async with self._session.get(
+                url, headers=self._headers, timeout=AXIS_TIMEOUT,
+            ) as resp:
+                if resp.status == 401:
+                    raise DatronAuthError(
+                        "Authentication failed — invalid or expired token"
+                    )
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise DatronApiError(
+                        f"API error {resp.status} for AxisPositions: {text}"
+                    )
+                if resp.content_length == 0:
+                    return {}
+                return await resp.json(content_type=None)
+        except aiohttp.ClientError as err:
+            raise DatronApiError(
+                f"Connection error for AxisPositions: {err}"
+            ) from err
+        except TimeoutError as err:
+            raise DatronApiError("Timeout requesting AxisPositions (30s)") from err
+
     async def get_compressed_air(self) -> dict[str, Any]:
         """Get compressed air sensor data."""
         return await self._get("/MachineComponents/CompressedAir")
@@ -356,15 +392,6 @@ class DatronApiClient:
         if token:
             params["token"] = token
         return await self._get("/Image/Tool", params=params)
-
-    # ── Cartridge ────────────────────────────────────────────
-
-    async def get_cartridge_level(self) -> float | None:
-        """Get current cartridge fill level (0–100%).
-
-        Returns a plain float, not a dict.
-        """
-        return await self._get("/Cartridge/CurrentLevel")
 
     # ── Dialog ───────────────────────────────────────────────
 

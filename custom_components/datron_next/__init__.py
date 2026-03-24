@@ -13,8 +13,9 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import DatronApiClient, DatronApiError
-from .const import CONF_TOKEN, COORD_FAST, COORD_MEDIUM, COORD_SLOW, DEFAULT_PORT, DOMAIN
+from .const import CONF_TOKEN, COORD_AXIS, COORD_FAST, COORD_MEDIUM, COORD_SLOW, DEFAULT_PORT, DOMAIN
 from .coordinator import (
+    DatronAxisCoordinator,
     DatronFastCoordinator,
     DatronMediumCoordinator,
     DatronSlowCoordinator,
@@ -78,11 +79,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
 
     # Create coordinators
     fast_coordinator = DatronFastCoordinator(hass, client)
+    axis_coordinator = DatronAxisCoordinator(hass, client)
     medium_coordinator = DatronMediumCoordinator(hass, client)
     slow_coordinator = DatronSlowCoordinator(hass, client)
 
     # Fetch initial data
     await fast_coordinator.async_config_entry_first_refresh()
+    await axis_coordinator.async_config_entry_first_refresh()
     await medium_coordinator.async_config_entry_first_refresh()
     await slow_coordinator.async_config_entry_first_refresh()
 
@@ -91,6 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
     hass.data[DOMAIN][entry.entry_id] = {
         "client": client,
         COORD_FAST: fast_coordinator,
+        COORD_AXIS: axis_coordinator,
         COORD_MEDIUM: medium_coordinator,
         COORD_SLOW: slow_coordinator,
     }
