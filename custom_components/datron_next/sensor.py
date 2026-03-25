@@ -20,7 +20,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
 from .const import COORD_AXIS, COORD_FAST, COORD_MEDIUM, COORD_SLOW, DOMAIN
-from .execution_sensor import DatronCycleHistorySensor, DatronEstimatedRemainingSensor
+from .execution_sensor import (
+    DatronCycleHistorySensor,
+    DatronEstimatedRemainingSensor,
+    KnownCycleTimeStore,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -530,14 +534,21 @@ async def async_setup_entry(
     ]
 
     # ── Stateful execution sensors ────────────────────────────────────
+    known_times = KnownCycleTimeStore(hass)
+    await known_times.async_load()
+
     estimated_remaining = DatronEstimatedRemainingSensor(
         coordinator=data[COORD_FAST],
         entry=entry,
+        medium_coordinator=data[COORD_MEDIUM],
+        known_times=known_times,
     )
     cycle_history = DatronCycleHistorySensor(
         hass=hass,
         coordinator=data[COORD_FAST],
         entry=entry,
+        medium_coordinator=data[COORD_MEDIUM],
+        known_times=known_times,
     )
     # Load persisted cycle history before the entity is registered so the
     # first state write includes any existing records.

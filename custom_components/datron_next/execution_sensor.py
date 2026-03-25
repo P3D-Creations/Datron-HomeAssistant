@@ -1,16 +1,22 @@
 """Advanced execution sensors for Datron NEXT integration.
 
-Provides two stateful sensor classes:
+Provides three components:
+
+KnownCycleTimeStore
+    Persistent LRU store mapping program fullName → last completed cycle
+    duration.  Survives HA restarts via ``homeassistant.helpers.storage.Store``.
 
 DatronEstimatedRemainingSensor
-    Corrects the Datron API's non-linear remaining-time value by computing
-    a real-time speed factor (how fast remaining counts down vs wall clock)
-    from a rolling window of samples and applying it as a divisor.
+    Corrects the Datron API's non-linear remaining-time value.  If a known
+    cycle time exists for the current program, it is used as the estimate
+    (``known_total – elapsed``).  Otherwise, a dynamic OLS regression on a
+    rolling window of remaining-time samples is used.
 
 DatronCycleHistorySensor
     Detects cycle start / complete / interrupted events from execution state
-    transitions and persists a rolling log of the last N cycle records using
-    HA's built-in storage helper so history survives restarts.
+    transitions and persists a rolling log of the last N cycle records.
+    On successful uninterrupted completion (≥ 2 min), the elapsed time is
+    recorded in the ``KnownCycleTimeStore`` keyed by program name.
 """
 
 from __future__ import annotations
@@ -87,6 +93,103 @@ def _device_info(entry: ConfigEntry) -> DeviceInfo:
     )
 
 
+# ── Known Cycle Time Store ────────────────────────────────────────────────────
+
+_KNOWN_TIMES_KEY = "datron_next_known_cycle_times"
+_KNOWN_TIMES_VERSION = 1
+_MAX_KNOWN_PROGRAMS = 12
+_MIN_RECORDABLE_DURATION_S = 120.0  # 2 min — shorter runs are admin/probing
+
+
+class KnownCycleTimeStore:
+    """Persistent LRU store: program fullName → last completed cycle duration.
+
+    Only stores times from **completed, uninterrupted** cycles that ran for
+    at least ``_MIN_RECORDABLE_DURATION_S`` (2 min).  This excludes short
+    administrative operations like probing, parking, tool checks, etc.
+
+    When the store exceeds ``_MAX_KNOWN_PROGRAMS`` entries, the oldest
+    (by ``recorded_at``) are evicted.
+
+    Administrative / non-production cycles are excluded by:
+    - Duration < 2 min (probing, tool checks, parking sequences)
+    - Empty / null program name (no program loaded)
+    """
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+        self._store: Store = Store(hass, _KNOWN_TIMES_VERSION, _KNOWN_TIMES_KEY)
+        self._data: dict[str, dict[str, Any]] = {}
+        self._loaded: bool = False
+
+    async def async_load(self) -> None:
+        """Load persisted known cycle times from HA storage."""
+        stored = await self._store.async_load()
+        if isinstance(stored, dict):
+            self._data = stored.get("programs", {})
+        self._loaded = True
+        _LOGGER.debug(
+            "Known cycle times loaded: %d programs", len(self._data)
+        )
+
+    @property
+    def loaded(self) -> bool:
+        """Whether the store has been loaded from disk."""
+        return self._loaded
+
+    @property
+    def programs(self) -> dict[str, dict[str, Any]]:
+        """Return a copy of all stored programs and their known times."""
+        return dict(self._data)
+
+    def get(self, program_name: str) -> float | None:
+        """Return the known cycle duration in seconds, or None."""
+        entry = self._data.get(program_name)
+        return entry["duration_s"] if entry else None
+
+    def record(self, program_name: str, duration_s: float) -> None:
+        """Record a completed cycle time for a program.
+
+        Ignores calls where:
+        - ``program_name`` is empty / None
+        - ``duration_s`` < 2 min (admin / probing operations)
+        """
+        if not program_name or duration_s < _MIN_RECORDABLE_DURATION_S:
+            _LOGGER.debug(
+                "Skipping known-time record: program=%r, duration=%.0fs (min %.0fs)",
+                program_name, duration_s, _MIN_RECORDABLE_DURATION_S,
+            )
+            return
+
+        prev = self._data.get(program_name)
+        cycle_count = (prev.get("cycle_count", 0) if prev else 0) + 1
+
+        self._data[program_name] = {
+            "duration_s": round(duration_s, 1),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "cycle_count": cycle_count,
+        }
+
+        # LRU eviction — remove oldest entries if over the limit
+        while len(self._data) > _MAX_KNOWN_PROGRAMS:
+            oldest_key = min(
+                self._data,
+                key=lambda k: self._data[k].get("recorded_at", ""),
+            )
+            _LOGGER.debug("Evicting oldest known time: '%s'", oldest_key)
+            del self._data[oldest_key]
+
+        self._hass.async_create_task(self._async_save())
+        _LOGGER.info(
+            "Known cycle time recorded: '%s' = %.0fs (%s) — cycle #%d",
+            program_name, duration_s, _fmt_duration(duration_s), cycle_count,
+        )
+
+    async def _async_save(self) -> None:
+        """Persist current data to HA storage."""
+        await self._store.async_save({"programs": self._data})
+
+
 # ── Solution 1 — Estimated Remaining Time ────────────────────────────────────
 
 
@@ -125,10 +228,16 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         self,
         coordinator: DataUpdateCoordinator,
         entry: ConfigEntry,
+        *,
+        medium_coordinator: DataUpdateCoordinator | None = None,
+        known_times: KnownCycleTimeStore | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_estimated_remaining"
         self._attr_device_info = _device_info(entry)
+
+        self._medium_coordinator = medium_coordinator
+        self._known_times = known_times
 
         # Rolling window: deque of (monotonic_time, remaining_seconds)
         self._samples: deque[tuple[float, float]] = deque()
@@ -136,6 +245,8 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         self._estimated_s: float | None = None
         self._raw_remaining_s: float | None = None
         self._last_machine_state: str | None = None
+        self._estimate_source: str | None = None  # "known", "dynamic", "raw"
+        self._known_total_s: float | None = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -145,6 +256,36 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         cutoff = now - self.WINDOW_SECONDS
         while self._samples and self._samples[0][0] < cutoff:
             self._samples.popleft()
+
+    def _get_current_program_name(self) -> str | None:
+        """Read the current program fullName from the medium coordinator."""
+        if not self._medium_coordinator or not self._medium_coordinator.data:
+            return None
+        program = self._medium_coordinator.data.get("program")
+        if not isinstance(program, dict):
+            return None
+        return program.get("fullName") or program.get("name") or None
+
+    def _try_known_estimate(self, elapsed_s: float | None) -> float | None:
+        """Return remaining seconds based on known cycle time, or None.
+
+        Uses ``known_total_duration − elapsed`` for programs that have a
+        stored cycle time in the ``KnownCycleTimeStore``.
+        """
+        if elapsed_s is None or not self._known_times or not self._known_times.loaded:
+            return None
+
+        program_name = self._get_current_program_name()
+        if not program_name:
+            return None
+
+        known_total = self._known_times.get(program_name)
+        if known_total is None:
+            self._known_total_s = None
+            return None
+
+        self._known_total_s = known_total
+        return max(known_total - elapsed_s, 0.0)
 
     @staticmethod
     def _ols_slope(samples: list[tuple[float, float]]) -> float | None:
@@ -210,6 +351,9 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         remaining_raw = (
             exec_data.get("programmLeftTime") if isinstance(exec_data, dict) else None
         )
+        elapsed_raw = (
+            exec_data.get("programExecutionTime") if isinstance(exec_data, dict) else None
+        )
         machine_state = (
             machine_status.get("executionState") if isinstance(machine_status, dict) else None
         )
@@ -217,15 +361,28 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         machine_state = _EXEC_STATE_MAP.get(machine_state, machine_state)
 
         remaining_s = _parse_timespan(remaining_raw)
+        elapsed_s = _parse_timespan(elapsed_raw)
         self._raw_remaining_s = remaining_s
 
-        if remaining_s is not None:
+        # ── Strategy 1: Known cycle time (most accurate for repeated programs)
+        known_remaining = self._try_known_estimate(elapsed_s)
+
+        if known_remaining is not None:
+            self._estimated_s = known_remaining
+            self._estimate_source = "known"
+        elif remaining_s is not None:
+            # ── Strategy 2: Dynamic OLS estimate (for new/unknown programs)
             self._compute_estimate(remaining_s, machine_state)
+            self._estimate_source = (
+                "dynamic" if self._speed_factor is not None else "raw"
+            )
         else:
-            # No program running
+            # No program running / no data
             self._samples.clear()
             self._speed_factor = None
             self._estimated_s = None
+            self._estimate_source = None
+            self._known_total_s = None
 
         self._last_machine_state = machine_state
         self.async_write_ha_state()
@@ -239,7 +396,9 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        program_name = self._get_current_program_name()
         return {
+            "estimate_source": self._estimate_source,
             "estimated_remaining": _fmt_duration(self._estimated_s),
             "estimated_remaining_s": (
                 round(self._estimated_s, 1) if self._estimated_s is not None else None
@@ -248,6 +407,11 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
             "raw_remaining_s": (
                 round(self._raw_remaining_s, 1) if self._raw_remaining_s is not None else None
             ),
+            "known_cycle_time": _fmt_duration(self._known_total_s),
+            "known_cycle_time_s": (
+                round(self._known_total_s, 1) if self._known_total_s is not None else None
+            ),
+            "program_name": program_name,
             "speed_factor": self._speed_factor,
             "sample_count": len(self._samples),
             "window_seconds": self.WINDOW_SECONDS,
@@ -318,11 +482,17 @@ class DatronCycleHistorySensor(CoordinatorEntity, SensorEntity):
         hass: HomeAssistant,
         coordinator: DataUpdateCoordinator,
         entry: ConfigEntry,
+        *,
+        medium_coordinator: DataUpdateCoordinator | None = None,
+        known_times: KnownCycleTimeStore | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._hass = hass
         self._attr_unique_id = f"{entry.entry_id}_cycle_history"
         self._attr_device_info = _device_info(entry)
+
+        self._medium_coordinator = medium_coordinator
+        self._known_times = known_times
 
         self._store: Store = Store(hass, _STORE_VERSION, _STORE_KEY)
         self._history: list[dict[str, Any]] = []   # persisted records
@@ -331,6 +501,7 @@ class DatronCycleHistorySensor(CoordinatorEntity, SensorEntity):
         # In-progress cycle state
         self._cycle_active: bool = False
         self._cycle_start_wall: str | None = None  # ISO timestamp
+        self._cycle_program_name: str | None = None  # snapshot at cycle start
         self._last_elapsed_s: float | None = None
         self._last_machine_state: str | None = None
         self._last_progress: float = 0.0
@@ -352,12 +523,23 @@ class DatronCycleHistorySensor(CoordinatorEntity, SensorEntity):
         """Persist current history to HA storage."""
         await self._store.async_save({"cycles": self._history})
 
+    def _get_program_name(self) -> str | None:
+        """Read the current program fullName from the medium coordinator."""
+        if not self._medium_coordinator or not self._medium_coordinator.data:
+            return None
+        program = self._medium_coordinator.data.get("program")
+        if not isinstance(program, dict):
+            return None
+        return program.get("fullName") or program.get("name") or None
+
     def _record_cycle(self, elapsed_s: float, status: str) -> None:
         """Append a cycle record and trim to MAX_CYCLES."""
+        program_name = self._cycle_program_name
         record: dict[str, Any] = {
             "status": status,  # "completed" | "interrupted"
             "duration_s": round(elapsed_s, 1),
             "duration": _fmt_duration(elapsed_s),
+            "program": program_name,
             "started_at": self._cycle_start_wall,
             "ended_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -366,11 +548,16 @@ class DatronCycleHistorySensor(CoordinatorEntity, SensorEntity):
             self._history = self._history[-self.MAX_CYCLES :]
         self._hass.async_create_task(self._async_save_history())
         _LOGGER.info(
-            "Cycle %s: %.0fs (%s)",
+            "Cycle %s: %.0fs (%s) — program: %s",
             status,
             elapsed_s,
             record["duration"],
+            program_name or "<unknown>",
         )
+
+        # Record known cycle time on successful uninterrupted completion
+        if status == "completed" and self._known_times and program_name:
+            self._known_times.record(program_name, elapsed_s)
 
     # ------------------------------------------------------------------
     # Cycle state machine
@@ -431,10 +618,12 @@ class DatronCycleHistorySensor(CoordinatorEntity, SensorEntity):
         ):
             self._cycle_active = True
             self._cycle_start_wall = datetime.now(timezone.utc).isoformat()
+            self._cycle_program_name = self._get_program_name()
             _LOGGER.debug(
-                "New cycle started at elapsed=%.1fs, progress=%.1f%%",
+                "New cycle started at elapsed=%.1fs, progress=%.1f%%, program=%s",
                 elapsed_s,
                 progress * 100,
+                self._cycle_program_name or "<unknown>",
             )
 
         # Keep a note of elapsed even through pauses so the final duration
@@ -509,9 +698,14 @@ class DatronCycleHistorySensor(CoordinatorEntity, SensorEntity):
             _fmt_duration(self._last_elapsed_s) if self._cycle_active else None
         )
 
+        known_programs = (
+            self._known_times.programs if self._known_times and self._known_times.loaded else {}
+        )
+
         return {
             "is_cycle_active": self._cycle_active,
             "current_cycle_elapsed": current_elapsed,
+            "current_cycle_program": self._cycle_program_name if self._cycle_active else None,
             "history": list(self._history),
             "completed_count": len(completed),
             "interrupted_count": len(interrupted),
@@ -520,4 +714,12 @@ class DatronCycleHistorySensor(CoordinatorEntity, SensorEntity):
             "last_completed_duration": _fmt_duration(last_s),
             "last_completed_duration_s": last_s,
             "interruption_rate_pct": interruption_rate,
+            "known_cycle_times": {
+                name: {
+                    "duration": _fmt_duration(info["duration_s"]),
+                    "duration_s": info["duration_s"],
+                    "cycle_count": info.get("cycle_count", 0),
+                }
+                for name, info in known_programs.items()
+            },
         }
