@@ -224,6 +224,11 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
     MIN_SPEED: float = 0.05         # below this the machine is considered paused
     MAX_SPEED: float = 1.0          # remaining cannot shrink faster than elapsed
 
+    # Known-time divergence detection
+    DIVERGENCE_LOW: float = 0.3     # known < 30% of machine → program shortened
+    DIVERGENCE_HIGH: float = 3.0    # known > 300% of machine → program lengthened
+    DIVERGENCE_HOLD_S: float = 180.0  # 3 min sustained before invalidating
+
     def __init__(
         self,
         coordinator: DataUpdateCoordinator,
@@ -248,6 +253,11 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         self._estimate_source: str | None = None  # "known", "dynamic", "raw"
         self._known_total_s: float | None = None
 
+        # Divergence tracking: when known estimate strays far from machine
+        # estimate for DIVERGENCE_HOLD_S, we invalidate the known time.
+        self._divergence_start: float | None = None  # monotonic time divergence began
+        self._known_invalidated: bool = False  # set True when divergence confirmed
+
     # ------------------------------------------------------------------
     # Internal helpers
 
@@ -271,8 +281,17 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
 
         Uses ``known_total_duration − elapsed`` for programs that have a
         stored cycle time in the ``KnownCycleTimeStore``.
+
+        Returns ``None`` when:
+        - No elapsed data / no store / no matching program
+        - Known time has been invalidated for this cycle (divergence detected)
+        - Elapsed exceeds the stored total (program ran longer than expected)
         """
         if elapsed_s is None or not self._known_times or not self._known_times.loaded:
+            return None
+
+        # Already invalidated for this cycle — skip
+        if self._known_invalidated:
             return None
 
         program_name = self._get_current_program_name()
@@ -285,7 +304,67 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
             return None
 
         self._known_total_s = known_total
-        return max(known_total - elapsed_s, 0.0)
+
+        # Elapsed exceeded stored total → program is longer now
+        if elapsed_s > known_total:
+            _LOGGER.info(
+                "Known cycle time exceeded (elapsed %.0fs > stored %.0fs) "
+                "for '%s' — falling back to dynamic estimate",
+                elapsed_s, known_total, program_name,
+            )
+            self._known_invalidated = True
+            return None
+
+        return known_total - elapsed_s
+
+    def _check_known_divergence(
+        self, known_remaining: float, raw_remaining_s: float | None,
+    ) -> bool:
+        """Return True if the known estimate has diverged from the machine.
+
+        Compares known remaining to the machine's raw ``programmLeftTime``.
+        If the ratio is outside (DIVERGENCE_LOW, DIVERGENCE_HIGH) for longer
+        than DIVERGENCE_HOLD_S, the known time is considered stale (the
+        program was likely edited) and should be abandoned.
+        """
+        if raw_remaining_s is None or raw_remaining_s < 30:
+            # Machine estimate too small / unavailable — can't compare
+            self._divergence_start = None
+            return False
+
+        if known_remaining < 30:
+            # Our estimate is nearly zero — divergence check not meaningful;
+            # the exceeded-total check in _try_known_estimate handles this.
+            self._divergence_start = None
+            return False
+
+        ratio = known_remaining / raw_remaining_s
+
+        if ratio < self.DIVERGENCE_LOW or ratio > self.DIVERGENCE_HIGH:
+            now = _time.monotonic()
+            if self._divergence_start is None:
+                self._divergence_start = now
+                _LOGGER.debug(
+                    "Known-time divergence detected: ratio=%.2f "
+                    "(known=%.0fs, machine=%.0fs) — watching",
+                    ratio, known_remaining, raw_remaining_s,
+                )
+            elif now - self._divergence_start >= self.DIVERGENCE_HOLD_S:
+                _LOGGER.info(
+                    "Known-time divergence sustained for %.0fs "
+                    "(ratio=%.2f, known=%.0fs, machine=%.0fs) "
+                    "— invalidating stored time, falling back to dynamic",
+                    now - self._divergence_start,
+                    ratio, known_remaining, raw_remaining_s,
+                )
+                return True
+        else:
+            # Ratio within bounds — reset
+            if self._divergence_start is not None:
+                _LOGGER.debug("Known-time divergence resolved (ratio=%.2f)", ratio)
+            self._divergence_start = None
+
+        return False
 
     @staticmethod
     def _ols_slope(samples: list[tuple[float, float]]) -> float | None:
@@ -367,7 +446,21 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
         # ── Strategy 1: Known cycle time (most accurate for repeated programs)
         known_remaining = self._try_known_estimate(elapsed_s)
 
+        # Check whether the known estimate has been diverging from the
+        # machine's own estimate long enough to suggest the program changed.
+        if known_remaining is not None and self._check_known_divergence(
+            known_remaining, remaining_s,
+        ):
+            self._known_invalidated = True
+            known_remaining = None  # fall through to dynamic
+
         if known_remaining is not None:
+            # Keep feeding the OLS window so a fallback is immediately ready
+            # when/if the known time gets invalidated.
+            if remaining_s is not None:
+                self._compute_estimate(remaining_s, machine_state)
+            # Override _estimated_s with the known-time value (compute_estimate
+            # writes to _estimated_s as a side-effect, so this must come after).
             self._estimated_s = known_remaining
             self._estimate_source = "known"
         elif remaining_s is not None:
@@ -383,6 +476,8 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
             self._estimated_s = None
             self._estimate_source = None
             self._known_total_s = None
+            self._divergence_start = None
+            self._known_invalidated = False
 
         self._last_machine_state = machine_state
         self.async_write_ha_state()
@@ -411,6 +506,7 @@ class DatronEstimatedRemainingSensor(CoordinatorEntity, SensorEntity):
             "known_cycle_time_s": (
                 round(self._known_total_s, 1) if self._known_total_s is not None else None
             ),
+            "known_invalidated": self._known_invalidated,
             "program_name": program_name,
             "speed_factor": self._speed_factor,
             "sample_count": len(self._samples),
