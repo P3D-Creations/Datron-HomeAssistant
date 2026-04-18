@@ -524,6 +524,9 @@ async def async_setup_entry(
         COORD_SLOW: data[COORD_SLOW],
     }
 
+    has_rotary_axes: bool = bool(data.get("has_rotary_axes", True))
+    rotary_keys = {"axis_a", "axis_b", "axis_c"}
+
     entities: list = [
         DatronSensor(
             coordinator=coordinators[desc.coordinator_key],
@@ -531,6 +534,7 @@ async def async_setup_entry(
             entry=entry,
         )
         for desc in ALL_SENSORS
+        if has_rotary_axes or desc.key not in rotary_keys
     ]
 
     # ── Stateful execution sensors ────────────────────────────────────

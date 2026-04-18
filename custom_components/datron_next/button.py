@@ -135,6 +135,7 @@ async def async_setup_entry(
             entry=entry,
             client=client,
             medium_coordinator=medium_coordinator,
+            slow_coordinator=slow_coordinator,
             fast_coordinator=fast_coordinator,
         ),
         DatronSelectedProgramActionButton(
@@ -178,6 +179,15 @@ async def async_setup_entry(
             name="Confirm Dialog (Cancel)",
             icon="mdi:cancel",
             pick_left=True,
+        ),
+        DatronDialogLabelButton(
+            entry=entry,
+            client=client,
+            coordinator=fast_coordinator,
+            key="activate_machine",
+            name="Activate Machine",
+            icon="mdi:shield-check",
+            match_label="Activate",
         ),
     ]
     async_add_entities(entities)
@@ -289,25 +299,68 @@ class DatronReloadProgramButton(CoordinatorEntity, ButtonEntity):
         entry: ConfigEntry,
         client: DatronApiClient,
         medium_coordinator: DataUpdateCoordinator,
+        slow_coordinator: DataUpdateCoordinator,
         fast_coordinator: DataUpdateCoordinator,
     ) -> None:
         # Track the medium coordinator so we re-evaluate availability
         # when the currently-loaded program changes.
         super().__init__(medium_coordinator)
         self._client = client
+        self._slow_coordinator = slow_coordinator
         self._fast_coordinator = fast_coordinator
         self._attr_unique_id = f"{entry.entry_id}_reload_program"
         self._attr_device_info = _device_info(entry)
 
+    def _match_via_enumeration(
+        self, filename: str, directory_hint: str
+    ) -> str | None:
+        """Look up the program's SimPL path from the enumerated programs list.
+
+        Network-drive programs often report a raw UNC in ``directory``
+        while the machine's SimPL alias uses a different server name
+        (e.g. ``\\\\P3D_NAS\\Machines\\Datron`` internally → SimPL
+        ``network:\\\\Datron``). We can't reverse that mapping, but the
+        slow coordinator's ``network:`` enumeration has already returned
+        the alias-correct path. Match by filename; if the filename
+        collides across folders, disambiguate via a substring of the
+        raw directory.
+        """
+        slow_data = self._slow_coordinator.data or {}
+        programs = slow_data.get("programs")
+        if not isinstance(programs, list):
+            return None
+
+        target = filename.lower()
+        matches = [
+            p for p in programs
+            if isinstance(p, dict) and str(p.get("name", "")).lower() == target
+        ]
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return matches[0].get("path")
+
+        # Multiple matches — prefer one whose path shares a component
+        # with the raw directory (e.g. "Programs" appearing in both).
+        hint_parts = [
+            part for part in directory_hint.replace("\\", "/").split("/") if part
+        ]
+        for p in matches:
+            path = str(p.get("path", ""))
+            if any(part and part in path for part in hint_parts):
+                return path
+        return matches[0].get("path")
+
     def _current_program_path(self) -> str | None:
         """Build a SimPL path acceptable to LoadProgram.
 
-        LoadProgram expects ``machine:program.simpl`` (or
-        ``device:DEVICENAME\\share\\program.simpl``). Datron firmware
-        variants return ``directory`` in three shapes — SimPL, UNC
-        (``\\\\SERVER\\share``), or Windows drive-letter — and we
-        normalise those via ``_directory_to_simpl_root`` so we always
-        build a valid SimPL path where possible.
+        Strategy (in order):
+          1. If the enumerated programs list contains an entry with the
+             same filename, use that path — it comes directly from the
+             machine's own enumeration so aliasing is already resolved.
+          2. Otherwise derive a path from the Program payload's
+             ``directory`` field via ``_directory_to_simpl_root``.
+          3. Last-resort fallback: ``machine:<name>``.
         """
         data = self.coordinator.data or {}
         program = data.get("program")
@@ -320,16 +373,17 @@ class DatronReloadProgramButton(CoordinatorEntity, ButtonEntity):
         filename = name if name.lower().endswith(".simpl") else f"{name}.simpl"
 
         directory = program.get("directory") or ""
+        enumerated = self._match_via_enumeration(filename, directory)
+        if enumerated:
+            return enumerated
+
         root = _directory_to_simpl_root(directory) if isinstance(directory, str) else None
         if root:
-            # UNC and device: paths use backslash separators; machine:
-            # paths use forward slashes. Match whichever the root uses.
             if root.endswith(":") or root.endswith("\\") or root.endswith("/"):
                 return f"{root}{filename}"
             sep = "\\" if "\\" in root else "/"
             return f"{root}{sep}{filename}"
 
-        # Last resort: assume machine root.
         return f"machine:{filename}"
 
     @property
@@ -484,3 +538,83 @@ class DatronConfirmDialogButton(CoordinatorEntity, ButtonEntity):
             await self._client.confirm_dialog(dialog_id, button_label)
         except DatronApiError as err:
             raise HomeAssistantError(f"Confirm dialog failed: {err}") from err
+
+
+class DatronDialogLabelButton(CoordinatorEntity, ButtonEntity):
+    """Click a dialog button by exact label match (case-insensitive).
+
+    Only available when the currently open dialog exposes a button whose
+    label matches ``match_label``. Useful for recurring recovery prompts
+    like "Activate" where a one-click entity is clearer than chaining
+    through the generic Confirm Dialog button.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        client: DatronApiClient,
+        coordinator: DataUpdateCoordinator,
+        key: str,
+        name: str,
+        icon: str,
+        match_label: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._client = client
+        self._match_label = match_label
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_name = name
+        self._attr_icon = icon
+        self._attr_device_info = _device_info(entry)
+
+    def _open_dialog(self) -> dict[str, Any] | None:
+        coord_data: dict[str, Any] = self.coordinator.data or {}
+        dialog = coord_data.get("open_dialog")
+        return dialog if isinstance(dialog, dict) else None
+
+    def _matching_button(self, dialog: dict[str, Any]) -> str | None:
+        target = self._match_label.strip().lower()
+        for key in ("leftButtons", "rightButtons"):
+            for label in dialog.get(key) or []:
+                if isinstance(label, str) and label.strip().lower() == target:
+                    return label
+        return None
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        dialog = self._open_dialog()
+        if not dialog:
+            return False
+        return self._matching_button(dialog) is not None
+
+    async def async_press(self) -> None:
+        dialog = self._open_dialog()
+        if not dialog:
+            raise HomeAssistantError(
+                f"No open dialog — '{self._match_label}' button not available"
+            )
+        dialog_id: str | None = dialog.get("id")
+        if not dialog_id:
+            raise HomeAssistantError("Open dialog has no ID field")
+        button_label = self._matching_button(dialog)
+        if not button_label:
+            raise HomeAssistantError(
+                f"Open dialog has no '{self._match_label}' button "
+                f"(available: {dialog.get('leftButtons') or []} / "
+                f"{dialog.get('rightButtons') or []})"
+            )
+        _LOGGER.debug(
+            "Clicking '%s' on dialog '%s'",
+            button_label,
+            dialog.get("caption", ""),
+        )
+        try:
+            await self._client.confirm_dialog(dialog_id, button_label)
+        except DatronApiError as err:
+            raise HomeAssistantError(
+                f"{self._attr_name} failed: {err}"
+            ) from err

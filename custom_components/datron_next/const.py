@@ -5,8 +5,11 @@ DOMAIN = "datron_next"
 CONF_HOST = "host"
 CONF_TOKEN = "token"
 CONF_PORT = "port"
+CONF_EXTRA_SIMPL_ROOTS = "extra_simpl_roots"
+CONF_HAS_ROTARY_AXES = "has_rotary_axes"
 
 DEFAULT_PORT = 80
+DEFAULT_HAS_ROTARY_AXES = True
 API_VERSION = "2"
 
 # Polling intervals in seconds

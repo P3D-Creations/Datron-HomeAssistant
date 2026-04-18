@@ -24,5 +24,28 @@
     "abort": {
       "already_configured": "This machine is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Datron NEXT Options",
+        "description": "Update the bearer token, add extra SimPL roots to scan, or toggle rotary-axis sensors.",
+        "data": {
+          "token": "Bearer Token",
+          "extra_simpl_roots": "Extra SimPL Roots",
+          "has_rotary_axes": "Machine has rotary axes (A/B/C)"
+        },
+        "data_description": {
+          "token": "Replace the stored bearer token. Leave unchanged to keep the current token.",
+          "extra_simpl_roots": "Additional SimPL root paths to enumerate, one per line (e.g. network:\\\\Datron\\Programs). Useful when your network share's alias differs from its UNC server name.",
+          "has_rotary_axes": "Turn off on 3-axis machines to hide the A/B/C axis-position sensors. Polling cost is unchanged — the Datron API returns all six axes in one call."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect using the new token. Check the hostname and token.",
+      "invalid_auth": "Invalid authentication. Check your bearer token.",
+      "unknown": "An unexpected error occurred."
+    }
   }
 }

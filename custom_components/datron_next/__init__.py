@@ -13,7 +13,18 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import DatronApiClient, DatronApiError
-from .const import CONF_TOKEN, COORD_AXIS, COORD_FAST, COORD_MEDIUM, COORD_SLOW, DEFAULT_PORT, DOMAIN
+from .const import (
+    CONF_EXTRA_SIMPL_ROOTS,
+    CONF_HAS_ROTARY_AXES,
+    CONF_TOKEN,
+    COORD_AXIS,
+    COORD_FAST,
+    COORD_MEDIUM,
+    COORD_SLOW,
+    DEFAULT_HAS_ROTARY_AXES,
+    DEFAULT_PORT,
+    DOMAIN,
+)
 from .coordinator import (
     DatronAxisCoordinator,
     DatronFastCoordinator,
@@ -95,6 +106,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
     token = entry.data[CONF_TOKEN]
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
 
+    extra_roots: list[str] = list(entry.options.get(CONF_EXTRA_SIMPL_ROOTS) or [])
+    has_rotary_axes: bool = bool(
+        entry.options.get(CONF_HAS_ROTARY_AXES, DEFAULT_HAS_ROTARY_AXES)
+    )
+
     session = async_get_clientsession(hass)
     client = DatronApiClient(host=host, token=token, port=port, session=session)
 
@@ -102,7 +118,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
     fast_coordinator = DatronFastCoordinator(hass, client)
     axis_coordinator = DatronAxisCoordinator(hass, client)
     medium_coordinator = DatronMediumCoordinator(hass, client)
-    slow_coordinator = DatronSlowCoordinator(hass, client)
+    slow_coordinator = DatronSlowCoordinator(hass, client, extra_roots=extra_roots)
 
     # Fetch initial data
     await fast_coordinator.async_config_entry_first_refresh()
@@ -118,15 +134,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
         COORD_AXIS: axis_coordinator,
         COORD_MEDIUM: medium_coordinator,
         COORD_SLOW: slow_coordinator,
+        "has_rotary_axes": has_rotary_axes,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     # ── Register services (only once, on first entry setup) ──────────────────
     if not hass.services.has_service(DOMAIN, SVC_EXECUTE_PROGRAM):
         _register_services(hass)
 
     return True
+
+
+async def _async_options_updated(
+    hass: HomeAssistant, entry: DatronConfigEntry
+) -> None:
+    """Reload the entry when options change so new values take effect."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 def _register_services(hass: HomeAssistant) -> None:

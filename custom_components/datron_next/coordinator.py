@@ -25,25 +25,25 @@ _LOGGER = logging.getLogger(__name__)
 def _directory_to_simpl_root(directory: str) -> str | None:
     """Convert a directory string from the Program payload to a SimPL root.
 
-    Handles the three shapes we've observed from Datron firmware:
-      * Already SimPL-shaped (``machine:Jobs``, ``device:NAS\share``) →
-        returned as-is.
-      * UNC path (``\\\\SERVER\\share\\sub``) → rewritten as
-        ``device:SERVER\\share\\sub``.
-      * Windows drive-letter path (``E:\\Jobs``) → returned unchanged —
-        these aren't valid SimPL paths, but enumerating them will fail
-        cleanly with an API error rather than producing a bogus prefix.
+    Datron firmware returns network-share programs with ``directory`` as
+    a raw UNC path (``\\\\SERVER\\share``). The SimPL-path equivalent
+    uses the ``network:`` prefix and keeps the UNC double-backslash
+    exactly as-is — e.g. ``\\\\SERVER\\share`` becomes
+    ``network:\\\\SERVER\\share``. (Note: the machine may alias the
+    server internally — ``\\\\REAL_NAS`` in ``directory`` can map to a
+    different SimPL alias such as ``network:\\\\AliasName``. When that
+    happens the derived path won't match; enumerating ``network:`` in
+    the slow-coordinator defaults covers that case.)
 
-    Returns ``None`` for empty/invalid input.
+    Already-SimPL paths are returned unchanged; Windows drive-letter
+    paths return ``None``.
     """
     if not isinstance(directory, str) or not directory:
         return None
 
-    # UNC → device:
     if directory.startswith("\\\\"):
-        return "device:" + directory[2:]
+        return "network:" + directory
 
-    # Already SimPL-shaped?
     head = directory.split("/", 1)[0].split("\\", 1)[0]
     if ":" in head and not (len(head) == 2 and head[0].isalpha()):
         return directory
@@ -306,7 +306,12 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     Machine number, type, software version, licenses, runtime hours.
     """
 
-    def __init__(self, hass: HomeAssistant, client: DatronApiClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: DatronApiClient,
+        extra_roots: list[str] | None = None,
+    ) -> None:
         """Initialize the slow coordinator."""
         super().__init__(
             hass,
@@ -315,6 +320,7 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=SCAN_INTERVAL_SLOW),
         )
         self.client = client
+        self._user_extra_roots: list[str] = list(extra_roots or [])
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch slow-polling data from the API.
@@ -325,6 +331,15 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         samples folders without requiring the user to pre-configure
         every SimPL root prefix.
         """
+        # Default roots to scan. Any that don't exist on this machine
+        # will fail cleanly in enumerate_programs and be skipped.
+        #   machine:  – on-machine storage
+        #   network:  – network drives (one level deep lets us discover
+        #               each share alias and its root .simpl files)
+        #   samples:  – bundled Datron samples (if licensed)
+        #   usb:      – USB-drive storage (when plugged in)
+        default_roots = ["machine:", "network:", "samples:", "usb:"]
+
         extra_roots: list[str] = []
         try:
             current_program = await self.client.get_current_program()
@@ -334,7 +349,12 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except DatronApiError as err:
             _LOGGER.debug("[COORD-SLOW] Could not derive current-program root: %s", err)
 
-        roots = ["machine:"] + [r for r in extra_roots if r != "machine:"]
+        seen_roots: set[str] = set()
+        roots: list[str] = []
+        for r in default_roots + extra_roots + self._user_extra_roots:
+            if r not in seen_roots:
+                seen_roots.add(r)
+                roots.append(r)
 
         try:
             results = await asyncio.gather(
