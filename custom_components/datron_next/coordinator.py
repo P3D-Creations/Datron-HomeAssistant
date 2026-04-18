@@ -277,12 +277,14 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.client.get_software_version(),
                 self.client.get_licenses(),
                 self.client.get_runtime(),
+                self.client.enumerate_programs(),
+                self.client.get_workpieces(),
                 return_exceptions=True,
             )
 
             keys = [
                 "machine_number", "machine_type", "software_version",
-                "licenses", "runtime",
+                "licenses", "runtime", "programs", "workpieces",
             ]
             data: dict[str, Any] = {}
             for key, result in zip(keys, results):

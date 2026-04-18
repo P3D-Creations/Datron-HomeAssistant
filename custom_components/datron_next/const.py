@@ -33,6 +33,18 @@ MACHINE_STATE_ABORTED = "Aborted"
 MACHINE_STATE_TRANSIENT = "Transient"
 MACHINE_STATE_WAITING = "WaitingForUserInput"
 
+# States that indicate the machine is paused (some API builds report "Paused")
+PAUSED_STATES = {MACHINE_STATE_PAUSE, "Paused"}
+# States from which Pause / Abort are meaningful
+RUNNING_STATES = {MACHINE_STATE_RUNNING}
+# States where the machine is idle enough to start or load programs / Park
+IDLE_STATES = {
+    MACHINE_STATE_IDLE,
+    MACHINE_STATE_ABORTED,
+    MACHINE_STATE_PREPARING,
+    MACHINE_STATE_TRANSIENT,
+}
+
 # Notification types
 NOTIFICATION_TYPE_ERROR = "Error"
 NOTIFICATION_TYPE_WARNING = "Warning"

@@ -29,7 +29,21 @@ class DatronApiError(Exception):
 
 
 class DatronAuthError(DatronApiError):
-    """Exception for authentication errors."""
+    """Exception for authentication errors (401)."""
+
+
+class DatronLicenseError(DatronApiError):
+    """403 on an endpoint that requires a higher API license tier."""
+
+
+class DatronStateError(DatronApiError):
+    """403 on a command that is invalid in the current machine state.
+
+    Datron returns 403 both for genuine license-tier problems *and* for
+    commands that are illegal in the current state (e.g. Resume when the
+    machine is not paused, ConfirmDialog when no dialog is open).
+    Use this to disambiguate at the call site when context allows.
+    """
 
 
 class DatronApiClient:
@@ -87,9 +101,10 @@ class DatronApiClient:
                     if resp.status == 401:
                         raise DatronAuthError("Authentication failed — invalid or expired token")
                     if resp.status == 403:
-                        body = await resp.text()
-                        raise DatronAuthError(
-                            f"Forbidden for {path}: {body or 'insufficient API license tier'}"
+                        body = (await resp.text()).strip()
+                        raise DatronLicenseError(
+                            f"Forbidden for {path}: "
+                            f"{body or 'insufficient API license tier'}"
                         )
                     if resp.status >= 400:
                         text = await resp.text()
@@ -140,12 +155,17 @@ class DatronApiClient:
                             "Authentication failed — invalid or expired token"
                         )
                     if resp.status == 403:
-                        body = await resp.text()
-                        # 403 on a command often means the action is
-                        # invalid in the current machine state, not
-                        # necessarily a license problem.
-                        raise DatronApiError(
-                            f"Forbidden for {path}: {body or 'insufficient API license tier'}"
+                        body = (await resp.text()).strip()
+                        # 403 on a command most commonly means the action
+                        # is illegal in the current machine state (Resume
+                        # while not paused, etc.). License-tier 403s from
+                        # the machine typically include a body message.
+                        detail = body or (
+                            "action not allowed in current machine state "
+                            "(or Automation API license required)"
+                        )
+                        raise DatronStateError(
+                            f"Command {path} rejected (403): {detail}"
                         )
                     if resp.status >= 400:
                         text = await resp.text()
@@ -460,6 +480,65 @@ class DatronApiClient:
             "/Execution/ExecuteProgramAsync", json={"path": path}
         )
 
+    async def execute_loaded_program(self) -> dict[str, Any]:
+        """Run the program that is already loaded (the "Start" action)."""
+        return await self._command_post("/Execution/ExecuteLoadedProgram")
+
+    async def reference_machine(self) -> bool:
+        """Home / reference the machine axes. Returns True if referencing started."""
+        result = await self._command_post("/Machine/Reference")
+        # The Reference endpoint returns a bare bool per the API spec.
+        if isinstance(result, bool):
+            return result
+        return bool(result)
+
+    async def activate_workpiece(self, workpiece_name: str) -> bool:
+        """Activate (select) a saved workpiece setup by name."""
+        result = await self._command_post(
+            "/Workpiece/Activate", params={"workpieceName": workpiece_name}
+        )
+        return bool(result) if result is not None else True
+
+    async def get_remote_link_programs(self) -> dict[str, Any]:
+        """Get the list of RemoteLink programs."""
+        return await self._get("/RemoteLink/RemoteLinkPrograms")
+
+    async def execute_remote_link(self, name: str) -> dict[str, Any]:
+        """Execute a RemoteLink program by name."""
+        return await self._command_post("/RemoteLink/Execute", json={"name": name})
+
+    # ── SimPL variables ──────────────────────────────────────
+
+    async def get_bool_variable(self, name: str) -> dict[str, Any]:
+        """Read a SimPL boolean variable by name."""
+        return await self._get("/Variable/BooleanVariable", params={"name": name})
+
+    async def set_bool_variable(self, name: str, value: bool) -> Any:
+        """Create / overwrite a SimPL boolean variable."""
+        return await self._command_post(
+            "/Variable/BooleanVariable", json={"name": name, "value": bool(value)}
+        )
+
+    async def get_number_variable(self, name: str) -> dict[str, Any]:
+        """Read a SimPL numeric variable by name."""
+        return await self._get("/Variable/NumberVariable", params={"name": name})
+
+    async def set_number_variable(self, name: str, value: float) -> Any:
+        """Create / overwrite a SimPL numeric variable."""
+        return await self._command_post(
+            "/Variable/NumberVariable", json={"name": name, "value": float(value)}
+        )
+
+    async def get_string_variable(self, name: str) -> dict[str, Any]:
+        """Read a SimPL string variable by name."""
+        return await self._get("/Variable/StringVariable", params={"name": name})
+
+    async def set_string_variable(self, name: str, value: str) -> Any:
+        """Create / overwrite a SimPL string variable."""
+        return await self._command_post(
+            "/Variable/StringVariable", json={"name": name, "value": str(value)}
+        )
+
     async def get_program_file_info(self, path: str) -> dict[str, Any]:
         """Return metadata for a program file.
 
@@ -480,6 +559,51 @@ class DatronApiClient:
         return await self._get(
             "/FileSystem/EnumerateFolderContents", params={"path": path}
         )
+
+    async def enumerate_programs(
+        self, root: str = "machine:", max_depth: int = 1
+    ) -> list[dict[str, str]]:
+        """Walk the machine filesystem and return a flat list of programs.
+
+        Only files ending in ``.simpl`` are included. Traverses ``root``
+        plus *max_depth* levels of subfolders (default 1). Each entry is
+        ``{"name": str, "path": str, "folder": str}`` where ``path`` is
+        the SimPL path usable with ``LoadProgram`` / ``ExecuteProgramAsync``.
+        """
+        results: list[dict[str, str]] = []
+
+        async def _walk(folder: str, depth: int) -> None:
+            try:
+                data = await self.enumerate_folder_contents(folder)
+            except DatronApiError as err:
+                _LOGGER.debug("enumerate_programs: skipping %s: %s", folder, err)
+                return
+            if not isinstance(data, dict):
+                return
+            files = data.get("files") or []
+            for f in files:
+                if not isinstance(f, str) or not f.lower().endswith(".simpl"):
+                    continue
+                # Root path looks like "machine:" (trailing colon, no slash)
+                separator = "" if folder.endswith(":") else "/"
+                full_path = f"{folder}{separator}{f}"
+                # Display folder: "" for root, else strip "machine:" prefix
+                display_folder = (
+                    "" if folder.endswith(":") else folder.split(":", 1)[-1]
+                )
+                results.append(
+                    {"name": f, "path": full_path, "folder": display_folder}
+                )
+            if depth <= 0:
+                return
+            for sub in data.get("subfolders") or []:
+                if not isinstance(sub, str):
+                    continue
+                separator = "" if folder.endswith(":") else "/"
+                await _walk(f"{folder}{separator}{sub}", depth - 1)
+
+        await _walk(root, max_depth)
+        return results
 
     # ── User ─────────────────────────────────────────────────
 

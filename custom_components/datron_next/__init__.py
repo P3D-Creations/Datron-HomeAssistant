@@ -29,6 +29,7 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
     Platform.IMAGE,
     Platform.CAMERA,
+    Platform.SELECT,
 ]
 
 # ── Service names ─────────────────────────────────────────────────────────────
@@ -37,6 +38,10 @@ SVC_LOAD_PROGRAM = "load_program"
 SVC_ENUMERATE_FOLDER = "enumerate_folder_contents"
 SVC_PROGRAM_FILE_INFO = "get_program_file_info"
 SVC_CONFIRM_DIALOG = "confirm_dialog"
+SVC_ACTIVATE_WORKPIECE = "activate_workpiece"
+SVC_EXECUTE_REMOTE_LINK = "execute_remote_link"
+SVC_SET_VARIABLE = "set_variable"
+SVC_GET_VARIABLE = "get_variable"
 
 # ── Service schemas ───────────────────────────────────────────────────────────
 _PATH_SCHEMA = vol.Schema({vol.Required("path"): cv.string})
@@ -44,6 +49,21 @@ _CONFIRM_DIALOG_SCHEMA = vol.Schema(
     {
         vol.Required("button"): cv.string,
         vol.Optional("dialog_id"): cv.string,
+    }
+)
+_WORKPIECE_SCHEMA = vol.Schema({vol.Required("name"): cv.string})
+_REMOTE_LINK_SCHEMA = vol.Schema({vol.Required("name"): cv.string})
+_VARIABLE_SCHEMA = vol.Schema(
+    {
+        vol.Required("name"): cv.string,
+        vol.Required("type"): vol.In(["bool", "number", "string"]),
+        vol.Required("value"): vol.Any(bool, int, float, str),
+    }
+)
+_VARIABLE_GET_SCHEMA = vol.Schema(
+    {
+        vol.Required("name"): cv.string,
+        vol.Required("type"): vol.In(["bool", "number", "string"]),
     }
 )
 
@@ -245,6 +265,74 @@ def _register_services(hass: HomeAssistant) -> None:
         DOMAIN, SVC_CONFIRM_DIALOG, handle_confirm_dialog, schema=_CONFIRM_DIALOG_SCHEMA
     )
 
+    async def handle_activate_workpiece(call: ServiceCall) -> None:
+        client = _get_client(hass)
+        name: str = call.data["name"]
+        try:
+            await client.activate_workpiece(name)
+        except DatronApiError as err:
+            _LOGGER.error("activate_workpiece error: %s", err)
+            raise
+
+    async def handle_execute_remote_link(call: ServiceCall) -> None:
+        client = _get_client(hass)
+        name: str = call.data["name"]
+        try:
+            await client.execute_remote_link(name)
+        except DatronApiError as err:
+            _LOGGER.error("execute_remote_link error: %s", err)
+            raise
+
+    async def handle_set_variable(call: ServiceCall) -> None:
+        client = _get_client(hass)
+        name: str = call.data["name"]
+        var_type: str = call.data["type"]
+        value = call.data["value"]
+        try:
+            if var_type == "bool":
+                await client.set_bool_variable(name, bool(value))
+            elif var_type == "number":
+                await client.set_number_variable(name, float(value))
+            else:
+                await client.set_string_variable(name, str(value))
+        except DatronApiError as err:
+            _LOGGER.error("set_variable error: %s", err)
+            raise
+
+    async def handle_get_variable(call: ServiceCall) -> dict:
+        client = _get_client(hass)
+        name: str = call.data["name"]
+        var_type: str = call.data["type"]
+        try:
+            if var_type == "bool":
+                result = await client.get_bool_variable(name)
+            elif var_type == "number":
+                result = await client.get_number_variable(name)
+            else:
+                result = await client.get_string_variable(name)
+            return {"name": name, "type": var_type, "value": (result or {}).get("value")}
+        except DatronApiError as err:
+            _LOGGER.error("get_variable error: %s", err)
+            raise
+
+    hass.services.async_register(
+        DOMAIN, SVC_ACTIVATE_WORKPIECE, handle_activate_workpiece, schema=_WORKPIECE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SVC_EXECUTE_REMOTE_LINK, handle_execute_remote_link,
+        schema=_REMOTE_LINK_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN, SVC_SET_VARIABLE, handle_set_variable, schema=_VARIABLE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SVC_GET_VARIABLE,
+        handle_get_variable,
+        schema=_VARIABLE_GET_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bool:
     """Unload a config entry."""
@@ -259,6 +347,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> b
                 SVC_ENUMERATE_FOLDER,
                 SVC_PROGRAM_FILE_INFO,
                 SVC_CONFIRM_DIALOG,
+                SVC_ACTIVATE_WORKPIECE,
+                SVC_EXECUTE_REMOTE_LINK,
+                SVC_SET_VARIABLE,
+                SVC_GET_VARIABLE,
             ):
                 hass.services.async_remove(DOMAIN, svc)
 

@@ -1,7 +1,12 @@
 """Button platform for Datron NEXT integration.
 
-Execution-control buttons (Pause / Resume / Abort / Park) and dialog
-confirmation buttons require the Automation API license tier.
+Execution-control buttons (Pause / Resume / Abort / Park / Start /
+Reload / Load-Selected / Execute-Selected) and dialog confirmation
+buttons require the Automation API license tier.
+
+Buttons that are meaningless in the current machine state disable
+themselves via ``available`` so the user gets immediate feedback
+instead of a 403 from the machine.
 """
 
 from __future__ import annotations
@@ -14,12 +19,21 @@ from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .api import DatronApiClient, DatronApiError
-from .const import COORD_FAST, COORD_MEDIUM, COORD_SLOW, DOMAIN
+from .api import DatronApiClient, DatronApiError, DatronStateError
+from .const import (
+    COORD_FAST,
+    COORD_MEDIUM,
+    COORD_SLOW,
+    DOMAIN,
+    IDLE_STATES,
+    PAUSED_STATES,
+    RUNNING_STATES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +49,15 @@ def _device_info(entry: ConfigEntry) -> DeviceInfo:
     )
 
 
+def _execution_state(fast_data: dict[str, Any] | None) -> str | None:
+    if not isinstance(fast_data, dict):
+        return None
+    ms = fast_data.get("machine_status")
+    if isinstance(ms, dict):
+        return ms.get("executionState")
+    return None
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -44,48 +67,99 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     client: DatronApiClient = data["client"]
     fast_coordinator: DataUpdateCoordinator = data[COORD_FAST]
+    medium_coordinator: DataUpdateCoordinator = data[COORD_MEDIUM]
+    slow_coordinator: DataUpdateCoordinator = data[COORD_SLOW]
+    selection_state: dict[str, Any] = data.setdefault("selection", {})
 
     entities: list[ButtonEntity] = [
         # ── Data management ──────────────────────────────────
         DatronRefreshButton(entry=entry, coordinators=data),
 
         # ── Program execution control (Automation API) ───────
-        DatronSimpleActionButton(
+        DatronStateGatedActionButton(
             entry=entry,
             client=client,
+            coordinator=fast_coordinator,
+            key="start_program",
+            name="Start Program",
+            icon="mdi:play",
+            action=client.execute_loaded_program,
+            allowed_states=IDLE_STATES,
+        ),
+        DatronStateGatedActionButton(
+            entry=entry,
+            client=client,
+            coordinator=fast_coordinator,
             key="pause_program",
             name="Pause Program",
             icon="mdi:pause-circle",
             action=client.pause_execution,
+            allowed_states=RUNNING_STATES,
         ),
-        DatronSimpleActionButton(
+        DatronStateGatedActionButton(
             entry=entry,
             client=client,
+            coordinator=fast_coordinator,
             key="resume_program",
             name="Resume Program",
             icon="mdi:play-circle",
             action=client.resume_execution,
+            allowed_states=PAUSED_STATES,
         ),
-        DatronSimpleActionButton(
+        DatronStateGatedActionButton(
             entry=entry,
             client=client,
+            coordinator=fast_coordinator,
             key="abort_program",
             name="Abort Program",
             icon="mdi:stop-circle",
             device_class=ButtonDeviceClass.RESTART,
             action=client.abort_execution,
+            allowed_states=RUNNING_STATES | PAUSED_STATES,
         ),
-        DatronSimpleActionButton(
+        DatronStateGatedActionButton(
             entry=entry,
             client=client,
+            coordinator=fast_coordinator,
             key="move_to_park_position",
             name="Move to Park Position",
             icon="mdi:home-circle",
             action=client.move_to_park_position,
+            # Park should only fire when the machine isn't actively running.
+            allowed_states=IDLE_STATES | PAUSED_STATES,
+        ),
+
+        # ── Program management ───────────────────────────────
+        DatronReloadProgramButton(
+            entry=entry,
+            client=client,
+            medium_coordinator=medium_coordinator,
+            fast_coordinator=fast_coordinator,
+        ),
+        DatronSelectedProgramActionButton(
+            entry=entry,
+            client=client,
+            fast_coordinator=fast_coordinator,
+            slow_coordinator=slow_coordinator,
+            selection_state=selection_state,
+            key="load_selected_program",
+            name="Load Selected Program",
+            icon="mdi:file-upload",
+            execute=False,
+        ),
+        DatronSelectedProgramActionButton(
+            entry=entry,
+            client=client,
+            fast_coordinator=fast_coordinator,
+            slow_coordinator=slow_coordinator,
+            selection_state=selection_state,
+            key="execute_selected_program",
+            name="Execute Selected Program",
+            icon="mdi:rocket-launch",
+            execute=True,
         ),
 
         # ── Dialog control (Automation API) ──────────────────
-        # "OK" presses the first right-side button (positive / accept action)
         DatronConfirmDialogButton(
             entry=entry,
             client=client,
@@ -95,7 +169,6 @@ async def async_setup_entry(
             icon="mdi:check-circle",
             pick_left=False,
         ),
-        # "Cancel" presses the first left-side button (negative / dismiss action)
         DatronConfirmDialogButton(
             entry=entry,
             client=client,
@@ -129,7 +202,8 @@ class DatronRefreshButton(ButtonEntity):
         """Refresh all coordinators in parallel."""
         import asyncio
         tasks = []
-        for key in (COORD_FAST, COORD_MEDIUM, COORD_SLOW):
+        from .const import COORD_AXIS
+        for key in (COORD_FAST, COORD_MEDIUM, COORD_SLOW, COORD_AXIS):
             coordinator = self._coordinators.get(key)
             if coordinator is not None:
                 tasks.append(coordinator.async_request_refresh())
@@ -137,8 +211,20 @@ class DatronRefreshButton(ButtonEntity):
             await asyncio.gather(*tasks)
 
 
-class DatronSimpleActionButton(ButtonEntity):
-    """A button that triggers a single no-argument API action."""
+def _run_action_result_handling(name: str, result: Any) -> None:
+    """Common result handling for Datron execution endpoints.
+
+    ExecutionResult returns {resultCode: str}. Raises HomeAssistantError
+    on a non-Success resultCode so the HA UI surfaces the failure.
+    """
+    if isinstance(result, dict):
+        code = result.get("resultCode")
+        if code and code != "Success":
+            raise HomeAssistantError(f"{name}: machine returned '{code}'")
+
+
+class DatronStateGatedActionButton(CoordinatorEntity, ButtonEntity):
+    """An action button that is only available in certain machine states."""
 
     _attr_has_entity_name = True
 
@@ -146,14 +232,18 @@ class DatronSimpleActionButton(ButtonEntity):
         self,
         entry: ConfigEntry,
         client: DatronApiClient,
+        coordinator: DataUpdateCoordinator,
         key: str,
         name: str,
         icon: str,
         action: Callable[[], Awaitable[Any]],
+        allowed_states: set[str],
         device_class: ButtonDeviceClass | None = None,
     ) -> None:
+        super().__init__(coordinator)
         self._client = client
         self._action = action
+        self._allowed_states = allowed_states
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
         self._attr_icon = icon
@@ -161,29 +251,148 @@ class DatronSimpleActionButton(ButtonEntity):
             self._attr_device_class = device_class
         self._attr_device_info = _device_info(entry)
 
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        state = _execution_state(self.coordinator.data)
+        # If we can't read the state yet, leave the button available so
+        # the user can still try — better than a blank dashboard.
+        if state is None:
+            return True
+        return state in self._allowed_states
+
     async def async_press(self) -> None:
-        """Execute the API action."""
         try:
             result = await self._action()
-            if isinstance(result, dict):
-                code = result.get("resultCode")
-                if code and code != "Success":
-                    _LOGGER.warning(
-                        "Action '%s' returned non-success code: %s",
-                        self._attr_name,
-                        code,
-                    )
+        except DatronStateError as err:
+            raise HomeAssistantError(
+                f"{self._attr_name} rejected by machine: {err}"
+            ) from err
         except DatronApiError as err:
-            _LOGGER.error("Error pressing '%s': %s", self._attr_name, err)
+            raise HomeAssistantError(
+                f"{self._attr_name} failed: {err}"
+            ) from err
+        _run_action_result_handling(self._attr_name or "action", result)
+
+
+class DatronReloadProgramButton(CoordinatorEntity, ButtonEntity):
+    """Reload the currently loaded program (re-issue LoadProgram on same path)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Reload Program"
+    _attr_icon = "mdi:restore"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        client: DatronApiClient,
+        medium_coordinator: DataUpdateCoordinator,
+        fast_coordinator: DataUpdateCoordinator,
+    ) -> None:
+        # Track the medium coordinator so we re-evaluate availability
+        # when the currently-loaded program changes.
+        super().__init__(medium_coordinator)
+        self._client = client
+        self._fast_coordinator = fast_coordinator
+        self._attr_unique_id = f"{entry.entry_id}_reload_program"
+        self._attr_device_info = _device_info(entry)
+
+    def _current_program_path(self) -> str | None:
+        data = self.coordinator.data or {}
+        program = data.get("program")
+        if not isinstance(program, dict):
+            return None
+        full = program.get("fullName")
+        if isinstance(full, str) and full:
+            return full
+        # Fall back: try building from directory + name
+        directory = program.get("directory")
+        name = program.get("name")
+        if isinstance(directory, str) and isinstance(name, str) and name:
+            sep = "" if directory.endswith(":") or directory.endswith("/") else "/"
+            return f"{directory}{sep}{name}"
+        return None
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        if self._current_program_path() is None:
+            return False
+        # Only reload when not actively running.
+        state = _execution_state(self._fast_coordinator.data)
+        if state is None:
+            return True
+        return state in IDLE_STATES | PAUSED_STATES
+
+    async def async_press(self) -> None:
+        path = self._current_program_path()
+        if not path:
+            raise HomeAssistantError("No program is currently loaded")
+        try:
+            result = await self._client.load_program(path)
+        except DatronApiError as err:
+            raise HomeAssistantError(f"Reload Program failed: {err}") from err
+        _run_action_result_handling("Reload Program", result)
+
+
+class DatronSelectedProgramActionButton(ButtonEntity):
+    """Load or Execute the program chosen in the Selected Program select entity."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        client: DatronApiClient,
+        fast_coordinator: DataUpdateCoordinator,
+        slow_coordinator: DataUpdateCoordinator,
+        selection_state: dict[str, Any],
+        key: str,
+        name: str,
+        icon: str,
+        execute: bool,
+    ) -> None:
+        self._client = client
+        self._fast_coordinator = fast_coordinator
+        self._slow_coordinator = slow_coordinator
+        self._selection_state = selection_state
+        self._execute = execute
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_name = name
+        self._attr_icon = icon
+        self._attr_device_info = _device_info(entry)
+
+    @property
+    def available(self) -> bool:
+        if not self._selection_state.get("path"):
+            return False
+        # Executing requires an idle machine; loading also requires idle.
+        state = _execution_state(self._fast_coordinator.data)
+        if state is None:
+            return True
+        return state in IDLE_STATES
+
+    async def async_press(self) -> None:
+        path = self._selection_state.get("path")
+        if not path:
+            raise HomeAssistantError("No program selected")
+        try:
+            if self._execute:
+                result = await self._client.execute_program_async(path)
+                _run_action_result_handling("Execute Selected Program", result)
+            else:
+                result = await self._client.load_program(path)
+                _run_action_result_handling("Load Selected Program", result)
+        except DatronApiError as err:
+            raise HomeAssistantError(
+                f"{self._attr_name} failed: {err}"
+            ) from err
 
 
 class DatronConfirmDialogButton(CoordinatorEntity, ButtonEntity):
-    """Confirm (or cancel) the currently open machine dialog.
-
-    Reads the open dialog from the fast coordinator data and presses
-    either the first right-side button (OK) or the first left-side
-    button (Cancel), falling back to the other side if empty.
-    """
+    """Confirm (or cancel) the currently open machine dialog."""
 
     _attr_has_entity_name = True
 
@@ -205,30 +414,33 @@ class DatronConfirmDialogButton(CoordinatorEntity, ButtonEntity):
         self._attr_icon = icon
         self._attr_device_info = _device_info(entry)
 
-    async def async_press(self) -> None:
-        """Click the appropriate dialog button."""
+    def _open_dialog(self) -> dict[str, Any] | None:
         coord_data: dict[str, Any] = self.coordinator.data or {}
         dialog = coord_data.get("open_dialog")
+        return dialog if isinstance(dialog, dict) else None
 
-        if not isinstance(dialog, dict):
-            _LOGGER.warning("No open dialog to confirm/cancel")
-            return
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        return self._open_dialog() is not None
+
+    async def async_press(self) -> None:
+        dialog = self._open_dialog()
+        if not dialog:
+            raise HomeAssistantError("No open dialog to confirm/cancel")
 
         dialog_id: str | None = dialog.get("id")
         if not dialog_id:
-            _LOGGER.warning("Open dialog has no ID field")
-            return
+            raise HomeAssistantError("Open dialog has no ID field")
 
-        # Determine which side's button list to use, falling back to the other
         primary_key = "leftButtons" if self._pick_left else "rightButtons"
         fallback_key = "rightButtons" if self._pick_left else "leftButtons"
         buttons: list[str] = dialog.get(primary_key) or dialog.get(fallback_key) or []
-
         if not buttons:
-            _LOGGER.warning(
-                "Dialog '%s' has no buttons to click", dialog.get("caption", "")
+            raise HomeAssistantError(
+                f"Dialog '{dialog.get('caption', '')}' has no buttons to click"
             )
-            return
 
         button_label = buttons[0]
         _LOGGER.debug(
@@ -239,4 +451,4 @@ class DatronConfirmDialogButton(CoordinatorEntity, ButtonEntity):
         try:
             await self._client.confirm_dialog(dialog_id, button_label)
         except DatronApiError as err:
-            _LOGGER.error("Error confirming dialog: %s", err)
+            raise HomeAssistantError(f"Confirm dialog failed: {err}") from err

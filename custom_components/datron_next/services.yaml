@@ -71,6 +71,91 @@ get_program_file_info:
       selector:
         text:
 
+activate_workpiece:
+  name: Activate Workpiece
+  description: >
+    Activate (select) a saved workpiece setup by name. Call
+    ``get_workpieces`` list from the slow coordinator attributes to see
+    available names. Requires the Automation API license tier.
+  fields:
+    name:
+      name: Workpiece Name
+      description: Exact name of the workpiece to activate.
+      required: true
+      example: "MyWorkpiece"
+      selector:
+        text:
+
+execute_remote_link:
+  name: Execute Remote Link Program
+  description: >
+    Run a program from the machine's RemoteLink list by name.
+    Requires the Automation API license tier.
+  fields:
+    name:
+      name: RemoteLink Program Name
+      description: Exact name of the RemoteLink program.
+      required: true
+      example: "StartupRoutine"
+      selector:
+        text:
+
+set_variable:
+  name: Set SimPL Variable
+  description: >
+    Create or overwrite a SimPL variable on the machine. The machine's
+    variable database is shared with running programs, so writes are
+    visible to SimPL immediately. Requires the Automation API license tier.
+  fields:
+    name:
+      name: Variable Name
+      required: true
+      example: "MyFlag"
+      selector:
+        text:
+    type:
+      name: Type
+      description: One of ``bool``, ``number``, or ``string``.
+      required: true
+      example: "bool"
+      selector:
+        select:
+          options:
+            - bool
+            - number
+            - string
+    value:
+      name: Value
+      required: true
+      example: true
+      selector:
+        text:
+
+get_variable:
+  name: Get SimPL Variable
+  description: >
+    Read a SimPL variable from the machine. Returns a response dict
+    ``{name, type, value}`` — use with ``response_variable`` in scripts.
+    Requires the Automation API license tier.
+  fields:
+    name:
+      name: Variable Name
+      required: true
+      example: "MyFlag"
+      selector:
+        text:
+    type:
+      name: Type
+      description: One of ``bool``, ``number``, or ``string``.
+      required: true
+      example: "bool"
+      selector:
+        select:
+          options:
+            - bool
+            - number
+            - string
+
 confirm_dialog:
   name: Confirm Dialog
   description: >
