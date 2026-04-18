@@ -22,39 +22,51 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def _derive_simpl_root(program: Any) -> str | None:
-    """Given a CurrentlyLoadedProgram payload, return a SimPL folder to scan.
+def _directory_to_simpl_root(directory: str) -> str | None:
+    """Convert a directory string from the Program payload to a SimPL root.
 
-    Returns ``None`` if the program's location can't be expressed as a
-    SimPL path (e.g. ``directory`` came back as a Windows file path).
-    Otherwise returns the directory portion (containing the program),
-    so the slow coordinator can enumerate sibling programs there.
+    Handles the three shapes we've observed from Datron firmware:
+      * Already SimPL-shaped (``machine:Jobs``, ``device:NAS\share``) →
+        returned as-is.
+      * UNC path (``\\\\SERVER\\share\\sub``) → rewritten as
+        ``device:SERVER\\share\\sub``.
+      * Windows drive-letter path (``E:\\Jobs``) → returned unchanged —
+        these aren't valid SimPL paths, but enumerating them will fail
+        cleanly with an API error rather than producing a bogus prefix.
+
+    Returns ``None`` for empty/invalid input.
     """
+    if not isinstance(directory, str) or not directory:
+        return None
+
+    # UNC → device:
+    if directory.startswith("\\\\"):
+        return "device:" + directory[2:]
+
+    # Already SimPL-shaped?
+    head = directory.split("/", 1)[0].split("\\", 1)[0]
+    if ":" in head and not (len(head) == 2 and head[0].isalpha()):
+        return directory
+
+    return None
+
+
+def _derive_simpl_root(program: Any) -> str | None:
+    """Given a CurrentlyLoadedProgram payload, return a SimPL folder to scan."""
     if not isinstance(program, dict):
         return None
 
-    candidates = [program.get("directory"), program.get("fullName")]
-    for raw in candidates:
-        if not isinstance(raw, str) or not raw:
-            continue
-        # Accept only SimPL-shaped paths (prefix ends in ``:`` before any
-        # slash, and isn't a Windows drive letter like ``E:\``).
-        head = raw.split("/", 1)[0].split("\\", 1)[0]
-        if ":" not in head:
-            continue
-        if len(head) == 2 and head[0].isalpha():
-            continue  # Windows drive letter, not SimPL
-        # If the candidate is the full program path (ends in .simpl),
-        # strip the filename to get the folder.
-        if raw.lower().endswith(".simpl"):
-            for sep in ("/", "\\"):
-                if sep in raw:
-                    raw = raw.rsplit(sep, 1)[0]
-                    break
-            else:
-                # Name-only with no separator — directory is the prefix
-                raw = raw.split(":", 1)[0] + ":"
-        return raw
+    directory = program.get("directory")
+    root = _directory_to_simpl_root(directory) if isinstance(directory, str) else None
+    if root:
+        return root
+
+    # Fall back to fullName if it happens to be a full SimPL path.
+    full = program.get("fullName")
+    if isinstance(full, str) and full.lower().endswith(".simpl"):
+        folder_part = full.rsplit("/", 1)[0].rsplit("\\", 1)[0]
+        if folder_part != full:
+            return _directory_to_simpl_root(folder_part)
     return None
 
 

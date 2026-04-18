@@ -34,6 +34,7 @@ from .const import (
     PAUSED_STATES,
     RUNNING_STATES,
 )
+from .coordinator import _directory_to_simpl_root
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -302,43 +303,34 @@ class DatronReloadProgramButton(CoordinatorEntity, ButtonEntity):
         """Build a SimPL path acceptable to LoadProgram.
 
         LoadProgram expects ``machine:program.simpl`` (or
-        ``device:DEVICENAME\\program.simpl``). The ``fullName`` field
-        from CurrentlyLoadedProgram can come back as a Windows absolute
-        path on some firmware versions, which LoadProgram rejects with
-        ``LoadingInvalidPath``. We prefer ``fullName`` only if it looks
-        SimPL-shaped; otherwise we reconstruct ``machine:<name>`` and
-        include the directory if it isn't an OS path.
+        ``device:DEVICENAME\\share\\program.simpl``). Datron firmware
+        variants return ``directory`` in three shapes — SimPL, UNC
+        (``\\\\SERVER\\share``), or Windows drive-letter — and we
+        normalise those via ``_directory_to_simpl_root`` so we always
+        build a valid SimPL path where possible.
         """
         data = self.coordinator.data or {}
         program = data.get("program")
         if not isinstance(program, dict):
             return None
 
-        def _looks_simpl(p: str) -> bool:
-            # SimPL paths always contain ":" *before* the first "/" or "\"
-            # and never start with a drive letter like "E:\".
-            if not p:
-                return False
-            head = p.split("/", 1)[0].split("\\", 1)[0]
-            return ":" in head and not (len(head) == 2 and head[0].isalpha())
-
-        full = program.get("fullName") or ""
-        if isinstance(full, str) and _looks_simpl(full):
-            return full
-
         name = program.get("name")
         if not isinstance(name, str) or not name:
             return None
-        if not name.lower().endswith(".simpl"):
-            name = f"{name}.simpl"
+        filename = name if name.lower().endswith(".simpl") else f"{name}.simpl"
 
         directory = program.get("directory") or ""
-        if isinstance(directory, str) and _looks_simpl(directory):
-            sep = "" if directory.endswith(":") or directory.endswith("/") else "/"
-            return f"{directory}{sep}{name}"
+        root = _directory_to_simpl_root(directory) if isinstance(directory, str) else None
+        if root:
+            # UNC and device: paths use backslash separators; machine:
+            # paths use forward slashes. Match whichever the root uses.
+            if root.endswith(":") or root.endswith("\\") or root.endswith("/"):
+                return f"{root}{filename}"
+            sep = "\\" if "\\" in root else "/"
+            return f"{root}{sep}{filename}"
 
-        # Directory is a Windows path (or empty) — assume machine root.
-        return f"machine:{name}"
+        # Last resort: assume machine root.
+        return f"machine:{filename}"
 
     @property
     def available(self) -> bool:
