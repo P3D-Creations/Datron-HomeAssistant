@@ -299,20 +299,46 @@ class DatronReloadProgramButton(CoordinatorEntity, ButtonEntity):
         self._attr_device_info = _device_info(entry)
 
     def _current_program_path(self) -> str | None:
+        """Build a SimPL path acceptable to LoadProgram.
+
+        LoadProgram expects ``machine:program.simpl`` (or
+        ``device:DEVICENAME\\program.simpl``). The ``fullName`` field
+        from CurrentlyLoadedProgram can come back as a Windows absolute
+        path on some firmware versions, which LoadProgram rejects with
+        ``LoadingInvalidPath``. We prefer ``fullName`` only if it looks
+        SimPL-shaped; otherwise we reconstruct ``machine:<name>`` and
+        include the directory if it isn't an OS path.
+        """
         data = self.coordinator.data or {}
         program = data.get("program")
         if not isinstance(program, dict):
             return None
-        full = program.get("fullName")
-        if isinstance(full, str) and full:
+
+        def _looks_simpl(p: str) -> bool:
+            # SimPL paths always contain ":" *before* the first "/" or "\"
+            # and never start with a drive letter like "E:\".
+            if not p:
+                return False
+            head = p.split("/", 1)[0].split("\\", 1)[0]
+            return ":" in head and not (len(head) == 2 and head[0].isalpha())
+
+        full = program.get("fullName") or ""
+        if isinstance(full, str) and _looks_simpl(full):
             return full
-        # Fall back: try building from directory + name
-        directory = program.get("directory")
+
         name = program.get("name")
-        if isinstance(directory, str) and isinstance(name, str) and name:
+        if not isinstance(name, str) or not name:
+            return None
+        if not name.lower().endswith(".simpl"):
+            name = f"{name}.simpl"
+
+        directory = program.get("directory") or ""
+        if isinstance(directory, str) and _looks_simpl(directory):
             sep = "" if directory.endswith(":") or directory.endswith("/") else "/"
             return f"{directory}{sep}{name}"
-        return None
+
+        # Directory is a Windows path (or empty) — assume machine root.
+        return f"machine:{name}"
 
     @property
     def available(self) -> bool:
@@ -327,14 +353,28 @@ class DatronReloadProgramButton(CoordinatorEntity, ButtonEntity):
         return state in IDLE_STATES | PAUSED_STATES
 
     async def async_press(self) -> None:
+        data = self.coordinator.data or {}
+        program = data.get("program")
         path = self._current_program_path()
+        _LOGGER.debug(
+            "Reload Program: raw program=%r, derived path=%r",
+            program, path,
+        )
         if not path:
             raise HomeAssistantError("No program is currently loaded")
         try:
             result = await self._client.load_program(path)
         except DatronApiError as err:
-            raise HomeAssistantError(f"Reload Program failed: {err}") from err
-        _run_action_result_handling("Reload Program", result)
+            raise HomeAssistantError(
+                f"Reload Program failed for path '{path}': {err}"
+            ) from err
+        if isinstance(result, dict):
+            code = result.get("resultCode")
+            if code and code != "Success":
+                raise HomeAssistantError(
+                    f"Reload Program: machine returned '{code}' for path '{path}' "
+                    f"(raw program object: {program})"
+                )
 
 
 class DatronSelectedProgramActionButton(ButtonEntity):

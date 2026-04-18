@@ -137,9 +137,22 @@ class DatronApiClient:
 
         Uses ``_cmd_semaphore`` (independent of ``_semaphore``) so the
         request is never held back by in-flight polling calls.
+
+        For POSTs with no explicit body, we force an empty JSON body
+        (``data=b"{}"`` + ``Content-Type: application/json``) because
+        Datron's Kestrel server rejects Transfer-Encoding: chunked POSTs
+        and some of its endpoints 403 on bodyless POSTs even when the
+        action is valid.
         """
         if self._session is None:
             raise DatronApiError("No aiohttp session configured")
+
+        headers = dict(self._headers)
+        if method == "POST" and "json" not in kwargs and "data" not in kwargs:
+            kwargs["data"] = b"{}"
+            headers["Content-Type"] = "application/json"
+        elif "json" in kwargs:
+            headers.setdefault("Content-Type", "application/json")
 
         url = f"{self._base_url}{path}"
         async with self._cmd_semaphore:
@@ -147,7 +160,7 @@ class DatronApiClient:
             start = time.monotonic()
             try:
                 async with self._session.request(
-                    method, url, headers=self._headers,
+                    method, url, headers=headers,
                     timeout=COMMAND_TIMEOUT, **kwargs
                 ) as resp:
                     if resp.status == 401:
@@ -156,13 +169,25 @@ class DatronApiClient:
                         )
                     if resp.status == 403:
                         body = (await resp.text()).strip()
-                        # 403 on a command most commonly means the action
-                        # is illegal in the current machine state (Resume
-                        # while not paused, etc.). License-tier 403s from
-                        # the machine typically include a body message.
+                        # 403 on a command can mean two separate things:
+                        #  (a) the token's apiAutomation claim is missing,
+                        #      or the machine lacks the Automation license;
+                        #  (b) the action is illegal in the current state
+                        #      (Resume while not paused, etc.).
+                        # We log response headers + a snapshot of the
+                        # request so users can tell the two apart.
+                        response_headers = dict(resp.headers)
+                        _LOGGER.warning(
+                            "[CMD] 403 for %s %s | body=%r | "
+                            "server=%s | kwargs_keys=%s",
+                            method, path, body,
+                            response_headers.get("Server", "?"),
+                            sorted(kwargs.keys()),
+                        )
                         detail = body or (
-                            "action not allowed in current machine state "
-                            "(or Automation API license required)"
+                            "action not allowed in current machine state, "
+                            "or token lacks apiAutomation claim, "
+                            "or machine lacks the Automation API license"
                         )
                         raise DatronStateError(
                             f"Command {path} rejected (403): {detail}"
@@ -561,18 +586,39 @@ class DatronApiClient:
         )
 
     async def enumerate_programs(
-        self, root: str = "machine:", max_depth: int = 1
+        self,
+        roots: list[str] | None = None,
+        max_depth: int = 1,
     ) -> list[dict[str, str]]:
-        """Walk the machine filesystem and return a flat list of programs.
+        """Walk one or more SimPL-rooted filesystems for ``.simpl`` files.
 
-        Only files ending in ``.simpl`` are included. Traverses ``root``
-        plus *max_depth* levels of subfolders (default 1). Each entry is
-        ``{"name": str, "path": str, "folder": str}`` where ``path`` is
-        the SimPL path usable with ``LoadProgram`` / ``ExecuteProgramAsync``.
+        Each entry in ``roots`` is a SimPL path prefix such as ``"machine:"``,
+        ``"device:NAS01\\CNC"``, ``"samples:"``. For each root we traverse
+        up to *max_depth* levels of subfolders (default 1). Duplicate paths
+        (e.g. the same file seen via two overlapping roots) are collapsed.
+
+        Each returned entry is ``{"name": str, "path": str, "folder": str,
+        "root": str}`` where ``path`` is the full SimPL path accepted by
+        ``LoadProgram`` / ``ExecuteProgramAsync``.
         """
-        results: list[dict[str, str]] = []
+        if roots is None:
+            roots = ["machine:"]
 
-        async def _walk(folder: str, depth: int) -> None:
+        results: list[dict[str, str]] = []
+        seen: set[str] = set()
+
+        def _join(folder: str, child: str) -> str:
+            # SimPL uses ``:`` as the root delimiter and accepts both
+            # ``/`` and ``\`` between path components. Network and USB
+            # device paths (``device:NAS\share``) are backslash-style;
+            # on-machine paths are slash-style. Respect whichever style
+            # the folder already uses.
+            if folder.endswith(":") or folder.endswith("/") or folder.endswith("\\"):
+                return f"{folder}{child}"
+            sep = "\\" if "\\" in folder and "/" not in folder.split(":", 1)[-1] else "/"
+            return f"{folder}{sep}{child}"
+
+        async def _walk(folder: str, depth: int, root: str) -> None:
             try:
                 data = await self.enumerate_folder_contents(folder)
             except DatronApiError as err:
@@ -580,29 +626,34 @@ class DatronApiClient:
                 return
             if not isinstance(data, dict):
                 return
-            files = data.get("files") or []
-            for f in files:
+            for f in data.get("files") or []:
                 if not isinstance(f, str) or not f.lower().endswith(".simpl"):
                     continue
-                # Root path looks like "machine:" (trailing colon, no slash)
-                separator = "" if folder.endswith(":") else "/"
-                full_path = f"{folder}{separator}{f}"
-                # Display folder: "" for root, else strip "machine:" prefix
-                display_folder = (
-                    "" if folder.endswith(":") else folder.split(":", 1)[-1]
-                )
+                full_path = _join(folder, f)
+                if full_path in seen:
+                    continue
+                seen.add(full_path)
+                # Display folder is the path between the root and the file.
+                if folder == root:
+                    display_folder = ""
+                else:
+                    display_folder = folder[len(root):].lstrip("/\\")
                 results.append(
-                    {"name": f, "path": full_path, "folder": display_folder}
+                    {
+                        "name": f,
+                        "path": full_path,
+                        "folder": display_folder,
+                        "root": root,
+                    }
                 )
             if depth <= 0:
                 return
             for sub in data.get("subfolders") or []:
-                if not isinstance(sub, str):
-                    continue
-                separator = "" if folder.endswith(":") else "/"
-                await _walk(f"{folder}{separator}{sub}", depth - 1)
+                if isinstance(sub, str):
+                    await _walk(_join(folder, sub), depth - 1, root)
 
-        await _walk(root, max_depth)
+        for root in roots:
+            await _walk(root, max_depth, root)
         return results
 
     # ── User ─────────────────────────────────────────────────

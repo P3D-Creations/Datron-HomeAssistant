@@ -22,6 +22,42 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _derive_simpl_root(program: Any) -> str | None:
+    """Given a CurrentlyLoadedProgram payload, return a SimPL folder to scan.
+
+    Returns ``None`` if the program's location can't be expressed as a
+    SimPL path (e.g. ``directory`` came back as a Windows file path).
+    Otherwise returns the directory portion (containing the program),
+    so the slow coordinator can enumerate sibling programs there.
+    """
+    if not isinstance(program, dict):
+        return None
+
+    candidates = [program.get("directory"), program.get("fullName")]
+    for raw in candidates:
+        if not isinstance(raw, str) or not raw:
+            continue
+        # Accept only SimPL-shaped paths (prefix ends in ``:`` before any
+        # slash, and isn't a Windows drive letter like ``E:\``).
+        head = raw.split("/", 1)[0].split("\\", 1)[0]
+        if ":" not in head:
+            continue
+        if len(head) == 2 and head[0].isalpha():
+            continue  # Windows drive letter, not SimPL
+        # If the candidate is the full program path (ends in .simpl),
+        # strip the filename to get the folder.
+        if raw.lower().endswith(".simpl"):
+            for sep in ("/", "\\"):
+                if sep in raw:
+                    raw = raw.rsplit(sep, 1)[0]
+                    break
+            else:
+                # Name-only with no separator — directory is the prefix
+                raw = raw.split(":", 1)[0] + ":"
+        return raw
+    return None
+
+
 class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator for fast-polling data (4s).
 
@@ -269,7 +305,25 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.client = client
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch slow-polling data from the API."""
+        """Fetch slow-polling data from the API.
+
+        For the program list we enumerate ``machine:`` plus the root
+        derived from the currently-loaded program, if any — that way the
+        dropdown includes sibling programs on network shares / USB /
+        samples folders without requiring the user to pre-configure
+        every SimPL root prefix.
+        """
+        extra_roots: list[str] = []
+        try:
+            current_program = await self.client.get_current_program()
+            extra = _derive_simpl_root(current_program)
+            if extra:
+                extra_roots.append(extra)
+        except DatronApiError as err:
+            _LOGGER.debug("[COORD-SLOW] Could not derive current-program root: %s", err)
+
+        roots = ["machine:"] + [r for r in extra_roots if r != "machine:"]
+
         try:
             results = await asyncio.gather(
                 self.client.get_machine_number(),
@@ -277,7 +331,7 @@ class DatronSlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.client.get_software_version(),
                 self.client.get_licenses(),
                 self.client.get_runtime(),
-                self.client.enumerate_programs(),
+                self.client.enumerate_programs(roots=roots),
                 self.client.get_workpieces(),
                 return_exceptions=True,
             )

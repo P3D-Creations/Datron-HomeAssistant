@@ -42,6 +42,7 @@ SVC_ACTIVATE_WORKPIECE = "activate_workpiece"
 SVC_EXECUTE_REMOTE_LINK = "execute_remote_link"
 SVC_SET_VARIABLE = "set_variable"
 SVC_GET_VARIABLE = "get_variable"
+SVC_DIAGNOSTICS = "diagnostics"
 
 # ── Service schemas ───────────────────────────────────────────────────────────
 _PATH_SCHEMA = vol.Schema({vol.Required("path"): cv.string})
@@ -333,6 +334,33 @@ def _register_services(hass: HomeAssistant) -> None:
         supports_response=SupportsResponse.OPTIONAL,
     )
 
+    async def handle_diagnostics(call: ServiceCall) -> dict:
+        """Return user claims + machine licenses. Use to debug 403 errors.
+
+        Call with ``response_variable`` in a script / dev-tools to inspect:
+          - ``user_claims.apiAutomation`` must be True for POST commands.
+          - ``licenses.apiAutomation`` must be True for the machine to
+            accept Automation API calls at all.
+        """
+        client = _get_client(hass)
+        out: dict[str, Any] = {}
+        try:
+            out["user_claims"] = await client.get_user_info()
+        except DatronApiError as err:
+            out["user_claims_error"] = str(err)
+        try:
+            out["licenses"] = await client.get_licenses()
+        except DatronApiError as err:
+            out["licenses_error"] = str(err)
+        return out
+
+    hass.services.async_register(
+        DOMAIN,
+        SVC_DIAGNOSTICS,
+        handle_diagnostics,
+        supports_response=SupportsResponse.ONLY,
+    )
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bool:
     """Unload a config entry."""
@@ -351,6 +379,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> b
                 SVC_EXECUTE_REMOTE_LINK,
                 SVC_SET_VARIABLE,
                 SVC_GET_VARIABLE,
+                SVC_DIAGNOSTICS,
             ):
                 hass.services.async_remove(DOMAIN, svc)
 

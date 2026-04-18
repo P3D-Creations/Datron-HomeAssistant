@@ -71,6 +71,15 @@ get_program_file_info:
       selector:
         text:
 
+diagnostics:
+  name: Diagnostics
+  description: >
+    Return the authenticated user's claims and the machine's activated
+    licenses. Useful for debugging 403 responses on Automation API
+    commands — check that both ``user_claims.apiAutomation`` AND
+    ``licenses.apiAutomation`` are true. Returns a response dict;
+    call with ``response_variable`` in a script or from Developer Tools.
+
 activate_workpiece:
   name: Activate Workpiece
   description: >
