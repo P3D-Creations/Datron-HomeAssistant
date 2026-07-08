@@ -251,7 +251,7 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.BAR,
         state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=3,
+        suggested_display_precision=2,
         coordinator_key=COORD_FAST,
         value_fn=lambda d: _safe_get(d, "vacuum", "analogSensor", "status"),
     ),

@@ -194,6 +194,21 @@ get_tools:
         device:
           integration: datron_next
 
+get_notifications:
+  name: Get Notifications
+  description: >
+    Return the machine's notification history (newest first) as
+    {count, notifications:[{type, message}]}. Used by the Cockpit card's
+    notification dropdown; also callable with response_variable in scripts.
+  fields:
+    device_id:
+      name: Machine (optional)
+      description: Target a specific Datron machine when more than one is configured.
+      required: false
+      selector:
+        device:
+          integration: datron_next
+
 confirm_dialog:
   name: Confirm Dialog
   description: >

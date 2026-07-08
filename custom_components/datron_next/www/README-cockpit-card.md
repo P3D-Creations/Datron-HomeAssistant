@@ -67,22 +67,52 @@ the entity id, drop the leading `sensor.` and the trailing `_status`. What remai
 - Program panel: name, preview image on a DATRON-green background, elapsed / remaining time and
   a job-progress bar.
 - Vacuum, compressed-air, clamping and Microjet metric tiles (tinted green when active/OK).
-- Live machine camera.
+  Pressure values are rounded to 2 decimals.
+- Live machine camera as a **continuous MJPEG stream** (`/api/camera_proxy_stream/...`). The
+  `<img>` lives in a persistent host outside the per-update content, so the video does not
+  restart / stutter on each poll — its `src` is only touched when the entity or access token
+  changes.
 - Tool-in-spindle panel with tool image, number, description, diameter and magazine/warehouse
   chips.
 - Pause / Resume action buttons (greyed out when unavailable; Resume highlights when paused).
 
 Missing entities are hidden or shown as a dash — the card never throws at render time.
 
+## Notifications
+
+The **notification bar** at the top is a working dropdown. Clicking it toggles an expanded
+history list (chevron rotates when open). History is fetched lazily via the
+`datron_next.get_notifications` response service and refreshed on each open. Rows are shown
+newest-first with a severity dot coloured by `type` (Error red, Warning orange, Info blue,
+Temporary grey). `Temporary` progress entries are de-emphasised and **hidden by default**;
+a **Hide/Show progress** toggle filters them, and the list is capped at 60 rows in a scroll
+container. If the response service is unavailable it shows "Couldn't load notifications".
+
 ## Tool browser
 
 When `show_tools` is true (the default), the blue **Tool overview** bar and the Magazine /
 Warehouse count figures open a **tool browser overlay**. The overlay has **Magazine ·
-Warehouse · Program** tabs, a search box (matches tool number / name / category / article
-number), and a scrollable list with a category icon, `T{number}`, name, category/description
-and a tool-life / path figure per tool. Data is fetched lazily via the `datron_next.get_tools`
+Warehouse · Program** tabs, a search box (matches name / category / diameter / article
+number), and a scrollable list. Data is fetched lazily via the `datron_next.get_tools`
 response service and cached per tab for the session. Set `show_tools: false` to keep the old
 behavior where the bar opens the tool image's more-info dialog instead.
+
+Each **row leads with the tool's characteristics**, not its (often auto-assigned) number:
+a spec line built from the nominal geometry — `⌀diameter · N FL · FL length · reach ·
+category` (each piece omitted when absent) — with the translated name and muted article
+number below, plus a category icon. Categories, geometry labels and common German name /
+description terms are translated to English (Datron's own i18n). Lengths render in **mm**,
+angles in **degrees**.
+
+**Click any row** to open a **tool detail popup** that mirrors the Datron Live tool page:
+header (translated name + article number), a large category icon, info rows
+(description / comment / vendor / article number), and a **Tool data** section that renders
+the geometry grouped exactly like the real page with left-accent colours — flute group
+(orange), toric-cut group (blue), shank group (green), tool-length group (grey), plus any
+remaining attributes. Tool-life / path percentages are shown **only** when `maxToolLife` /
+`maxToolPath` are positive; when the machine's tool-life feature is uncalibrated (both null,
+the common case here) no runtime is shown. Close with ×, the backdrop, or Esc (Esc from the
+detail returns to the list).
 
 > **Note:** program **files** are *not* browsable on Datron Live (RemoteLink is unlicensed).
 > The **Program** tab shows only the **tools used by the current program**, not a file browser.

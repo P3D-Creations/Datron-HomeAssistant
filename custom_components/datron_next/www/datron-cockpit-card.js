@@ -6,7 +6,7 @@
  * No build step, no external dependencies. Loaded by HA as an ES module.
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.2.0";
 
 console.info(
   "%c DATRON-COCKPIT-CARD %c v" + CARD_VERSION + " ",
@@ -19,6 +19,79 @@ const BLUE = "#0064a0";
 const SEV_INFO = "#0064a0";
 const SEV_WARN = "#f7931e";
 const SEV_ERROR = "#c80000";
+
+// ---- Datron i18n maps (translate machine-native terms to English) --------
+
+// Tool category (tool.category) -> human label
+const CATEGORY_LABELS = {
+  MillingEndFlat: "Flat Endmill",
+  MillingEndBall: "Ball Endmill",
+  MillingEndBullnose: "Corner Radius Endmill",
+  MillingRadius: "External Radius Endmill",
+  MillingFace: "Face Mill",
+  MillingThread: "Thread Mill",
+  MillingChamfer: "Chamfer Mill",
+  MillingSlot: "T-Slot Mill",
+  MillingDovetail: "Dovetail Mill",
+  MillingLollipop: "Lollipop Mill",
+  Drill: "Drill",
+  Reamer: "Reamer",
+  CounterSink: "Countersink",
+  Graver: "Engraving Tool",
+  Unspecified: "Special Tool",
+};
+
+// Geometry attribute -> human label
+const GEOMETRY_LABELS = {
+  Diameter: "Diameter",
+  FluteLength: "Flute length",
+  NumberOfFlutes: "Flute number",
+  ShoulderDiameter: "Toric cut diameter",
+  ShoulderLength: "Toric cut length",
+  ShaftDiameter: "Shaft diameter",
+  BodyLength: "Unclamping length",
+  ReferenceBodyLength: "Reference body length",
+  OverallLength: "Total length",
+  CornerRadius: "Corner radius",
+  FluteAngle: "Cutting angle",
+  TaperAngle: "Cone angle",
+  TipAngle: "Point angle",
+  TipDiameter: "Point diameter",
+  ThreadPitch: "Thread pitch",
+  ThreadAngle: "Thread angle",
+};
+
+// Geometry attributes whose value is an angle (radians -> degrees)
+const ANGLE_ATTRS = ["FluteAngle", "TaperAngle", "TipAngle", "ThreadAngle"];
+
+// German -> English whole-word replacements (sorted longest-first so more
+// specific terms win before their substrings).
+const GERMAN_TERMS = [
+  ["Einschneider", "Single-flute"],
+  ["Zweischneider", "Two-flute"],
+  ["Dreischneider", "Three-flute"],
+  ["Mehrschneider", "Multi-flute"],
+  ["Kugelfräser", "Ball nose mill"],
+  ["Torusfräser", "Toroidal mill"],
+  ["Schaftfräser", "End mill"],
+  ["Planfräser", "Face mill"],
+  ["Gravierstichel", "Engraving graver"],
+  ["Bohrer", "Drill"],
+  ["Reibahle", "Reamer"],
+  ["Fasenfräser", "Chamfer mill"],
+  ["Fase", "Chamfer"],
+  ["Senker", "Countersink"],
+  ["Gewindefräser", "Thread mill"],
+  ["gewuchtet", "balanced"],
+  ["poliert", "polished"],
+  ["Planschneide", "flat face"],
+  ["beschichtet", "coated"],
+  ["unbeschichtet", "uncoated"],
+  ["Schneide", "cutting edge"],
+  ["für", "for"],
+  ["mit", "with"],
+  ["ohne", "without"],
+].sort((a, b) => b[0].length - a[0].length);
 
 class DatronCockpitCard extends HTMLElement {
   constructor() {
@@ -33,6 +106,13 @@ class DatronCockpitCard extends HTMLElement {
     this._ovSearch = "";
     this._toolCache = {}; // storage -> tools array (successful fetch)
     this._toolStatus = {}; // storage -> "loading" | "error" | "ok"
+    this._ovDetailTool = null; // tool object shown in the detail popup, or null
+    this._camSrc = null; // last MJPEG stream src applied to the persistent <img>
+    // Notification history dropdown state
+    this._notifOpen = false;
+    this._notifHideProgress = true; // hide "Temporary" progress spam by default
+    this._notifCache = null; // notifications array (successful fetch)
+    this._notifStatus = "idle"; // "idle" | "loading" | "error" | "ok"
     this._onKeyDown = this._onKeyDown.bind(this);
     this.attachShadow({ mode: "open" });
   }
@@ -126,6 +206,99 @@ class DatronCockpitCard extends HTMLElement {
     );
   }
 
+  // Resolve the HA device_id for this machine (used by response services).
+  _deviceId() {
+    const prefix = this._config && this._config.prefix;
+    if (!prefix) return undefined;
+    const ent =
+      (this._hass &&
+        this._hass.entities &&
+        this._hass.entities["sensor." + prefix + "_status"]) ||
+      {};
+    return ent.device_id;
+  }
+
+  // Round a pressure/numeric state to 2 decimals; "--" when non-numeric.
+  _fmtPressure(v) {
+    const n = this._num(v);
+    return n === null ? "--" : n.toFixed(2);
+  }
+
+  // ---- i18n / geometry helpers ----------------------------------------
+
+  _trim(s) {
+    if (typeof s !== "string") s = String(s);
+    return s.indexOf(".") !== -1 ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+  }
+
+  // Convert a length in METERS to a trimmed mm string, or null.
+  _mmVal(raw, dec) {
+    const n = Number(raw);
+    if (!isFinite(n)) return null;
+    return this._trim((n * 1000).toFixed(dec == null ? 2 : dec));
+  }
+
+  // Prettify an unknown camelCase term: strip a leading "Milling", space caps.
+  _prettify(s) {
+    return String(s == null ? "" : s)
+      .replace(/^Milling/, "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .trim();
+  }
+
+  _translateCategory(cat) {
+    if (cat == null || cat === "") return "";
+    if (CATEGORY_LABELS[cat]) return CATEGORY_LABELS[cat];
+    return this._prettify(cat);
+  }
+
+  // Whole-word German -> English replacement (handles umlauts via \p{L}).
+  _translateTerms(str) {
+    if (str == null) return "";
+    let out = String(str);
+    for (let i = 0; i < GERMAN_TERMS.length; i++) {
+      const term = GERMAN_TERMS[i][0];
+      const rep = GERMAN_TERMS[i][1];
+      try {
+        const esc = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp("(?<![\\p{L}])" + esc + "(?![\\p{L}])", "giu");
+        out = out.replace(re, rep);
+      } catch (e) {
+        // Fallback: simple case-insensitive replace if lookbehind unsupported.
+        try {
+          out = out.split(new RegExp(term, "gi")).join(rep);
+        } catch (e2) {
+          /* leave as-is */
+        }
+      }
+    }
+    return out;
+  }
+
+  // Build {attribute: value} from a tool's nominalGeometry array.
+  _geomMap(t) {
+    const map = {};
+    const ng = t && Array.isArray(t.nominalGeometry) ? t.nominalGeometry : [];
+    for (let i = 0; i < ng.length; i++) {
+      const e = ng[i];
+      if (e && e.attribute != null) map[e.attribute] = e.value;
+    }
+    return map;
+  }
+
+  // Format a geometry attribute value with its unit; null when unusable.
+  _fmtAttrValue(attr, raw) {
+    if (raw === null || raw === undefined || raw === "") return null;
+    const n = Number(raw);
+    if (!isFinite(n)) return null;
+    if (attr === "NumberOfFlutes") return String(Math.round(n));
+    if (ANGLE_ATTRS.indexOf(attr) !== -1) {
+      return this._trim(((n * 180) / Math.PI).toFixed(1)) + "°";
+    }
+    return this._trim((n * 1000).toFixed(3)) + " mm";
+  }
+
   _entityPicture(domain, suffix) {
     const s = this._st(this._eid(domain, suffix));
     if (!s || !s.attributes) return null;
@@ -169,6 +342,7 @@ class DatronCockpitCard extends HTMLElement {
       this._built = true;
     }
     this._update();
+    this._updateCamera();
   }
 
   _buildShell() {
@@ -177,6 +351,7 @@ class DatronCockpitCard extends HTMLElement {
       this._css() +
       "</style>" +
       '<div class="card"><div id="content"></div>' +
+      '<div id="camera-host"></div>' +
       '<div id="overlay" class="ov-root" style="display:none"></div>' +
       "</div>";
     this._ovEl = this.shadowRoot.getElementById("overlay");
@@ -211,10 +386,25 @@ class DatronCockpitCard extends HTMLElement {
       this._callService("datron_next", "confirm_dialog", { button: arg });
     } else if (action === "more-info") {
       this._moreInfo(arg);
+    } else if (action === "notif-toggle") {
+      this._notifOpen = !this._notifOpen;
+      if (this._notifOpen) {
+        this._fetchNotifications();
+      } else {
+        this._update();
+      }
+    } else if (action === "notif-hideprogress") {
+      this._notifHideProgress = !this._notifHideProgress;
+      this._update();
     } else if (action === "open-tools") {
       this._openOverlay(arg || "magazine");
     } else if (action === "ov-tab") {
       this._openTab(arg);
+    } else if (action === "ov-tool") {
+      const p = (arg || "").split(":");
+      this._openToolDetail(p[0], parseInt(p[1], 10));
+    } else if (action === "ov-back") {
+      this._backToList();
     } else if (action === "ov-close") {
       this._closeOverlay();
     }
@@ -234,7 +424,6 @@ class DatronCockpitCard extends HTMLElement {
     html += this._renderToolStrip();
     html += this._renderToolOverview();
     html += this._renderActions();
-    html += this._renderCamera();
     c.innerHTML = html;
   }
 
@@ -267,16 +456,135 @@ class DatronCockpitCard extends HTMLElement {
     const s = this._st(this._eid("sensor", "latest_notification"));
     if (!s) return "";
     const msg = this._valid(s.state) ? s.state : "No notifications";
+    const open = this._notifOpen;
     return (
-      '<div class="panel notif">' +
+      '<div class="notif-wrap">' +
+      '<div class="panel notif tap" data-action="notif-toggle">' +
       '<span class="notif-msg">' +
       this._esc(msg) +
       "</span>" +
-      '<span class="notif-chev">' +
+      '<span class="notif-chev' +
+      (open ? " open" : "") +
+      '">' +
       this._svgChevron() +
       "</span>" +
+      "</div>" +
+      (open ? this._renderNotifDropdown() : "") +
       "</div>"
     );
+  }
+
+  _notifType(n) {
+    if (!n || typeof n !== "object") return "Info";
+    const t = n.type || n.severity || n.level || "Info";
+    return String(t);
+  }
+
+  _notifColor(type) {
+    const t = String(type || "").toLowerCase();
+    if (t === "error") return SEV_ERROR;
+    if (t === "warning" || t === "warn") return SEV_WARN;
+    if (t === "temporary") return "#8a8a8a";
+    return SEV_INFO;
+  }
+
+  _notifMsg(n) {
+    if (n == null) return "";
+    if (typeof n === "string") return n;
+    return n.message || n.text || n.caption || n.title || "";
+  }
+
+  _renderNotifDropdown() {
+    const status = this._notifStatus;
+    if (status === "loading") {
+      return '<div class="notif-drop"><div class="notif-msg2">Loading notifications…</div></div>';
+    }
+    if (status === "error") {
+      return '<div class="notif-drop"><div class="notif-msg2">Couldn\'t load notifications</div></div>';
+    }
+    const all = Array.isArray(this._notifCache) ? this._notifCache : [];
+    const hide = this._notifHideProgress;
+    let list = all;
+    if (hide) {
+      list = all.filter(
+        (n) => this._notifType(n).toLowerCase() !== "temporary"
+      );
+    }
+    const capped = list.slice(0, 60);
+
+    const head =
+      '<div class="notif-drophead">' +
+      '<span class="notif-count">' +
+      capped.length +
+      (capped.length === 1 ? " entry" : " entries") +
+      (list.length > capped.length ? " (of " + list.length + ")" : "") +
+      "</span>" +
+      '<span class="notif-spacer2"></span>' +
+      '<button class="notif-progbtn" data-action="notif-hideprogress">' +
+      (hide ? "Show progress" : "Hide progress") +
+      "</button>" +
+      "</div>";
+
+    let body;
+    if (!all.length) {
+      body = '<div class="notif-msg2">No notifications</div>';
+    } else if (!capped.length) {
+      body = '<div class="notif-msg2">No notifications (progress hidden)</div>';
+    } else {
+      let rows = "";
+      for (let i = 0; i < capped.length; i++) {
+        const n = capped[i];
+        const type = this._notifType(n);
+        const isTemp = type.toLowerCase() === "temporary";
+        rows +=
+          '<div class="notif-item' +
+          (isTemp ? " temp" : "") +
+          '">' +
+          '<span class="notif-dot" style="background:' +
+          this._notifColor(type) +
+          '" title="' +
+          this._esc(type) +
+          '"></span>' +
+          '<span class="notif-itxt">' +
+          this._esc(this._notifMsg(n)) +
+          "</span>" +
+          "</div>";
+      }
+      body = '<div class="notif-items">' + rows + "</div>";
+    }
+
+    return '<div class="notif-drop">' + head + body + "</div>";
+  }
+
+  async _fetchNotifications() {
+    this._notifStatus = "loading";
+    this._update();
+    let list = null;
+    let ok = false;
+    try {
+      const deviceId = this._deviceId();
+      const res = await this._hass.callService(
+        "datron_next",
+        "get_notifications",
+        deviceId ? { device_id: deviceId } : {},
+        undefined,
+        false,
+        true
+      );
+      if (res && res.response) {
+        list = res.response.notifications || [];
+        ok = true;
+      }
+    } catch (e) {
+      ok = false;
+    }
+    if (ok) {
+      this._notifCache = list;
+      this._notifStatus = "ok";
+    } else {
+      this._notifStatus = "error";
+    }
+    this._update();
   }
 
   // -- Dialog bar --------------------------------------------------------
@@ -397,7 +705,7 @@ class DatronCockpitCard extends HTMLElement {
       vacS.attributes && vacS.attributes.unit_of_measurement
         ? vacS.attributes.unit_of_measurement
         : "";
-    const value = this._valid(vacS.state) ? vacS.state : "--";
+    const value = this._fmtPressure(vacS.state);
     return this._valueBar(
       "Vacuum",
       value,
@@ -414,7 +722,7 @@ class DatronCockpitCard extends HTMLElement {
       airS.attributes && airS.attributes.unit_of_measurement
         ? airS.attributes.unit_of_measurement
         : "";
-    const value = this._valid(airS.state) ? airS.state : "--";
+    const value = this._fmtPressure(airS.state);
     return this._valueBar(
       "Compressed air",
       value,
@@ -470,7 +778,7 @@ class DatronCockpitCard extends HTMLElement {
     if (!s) return "";
     const a = s.attributes || {};
     const toolNo = a.tool_number;
-    const desc = a.description || s.state;
+    const desc = this._translateTerms(a.description || s.state);
 
     const mag = this._state("sensor", "tools_in_magazine");
     const wh = this._state("sensor", "tools_in_warehouse");
@@ -563,20 +871,49 @@ class DatronCockpitCard extends HTMLElement {
   }
 
   // -- Camera ------------------------------------------------------------
+  //
+  // The camera lives in a PERSISTENT host outside #content so the MJPEG
+  // stream <img> survives every hass update. Rebuilding it would restart the
+  // stream and stutter the video, so we build the <img> once and only touch
+  // its .src when (entity id, access_token) actually changes.
 
-  _renderCamera() {
-    if (!this._config.show_camera) return "";
-    const pic = this._entityPicture("camera", "machine_camera");
-    if (!pic) return "";
-    return (
-      '<div class="panel camera">' +
-      '<img class="cam-img" src="' +
-      this._esc(pic) +
-      '" alt="Machine camera" data-action="more-info" data-arg="' +
-      this._esc(this._eid("camera", "machine_camera")) +
-      '"/>' +
-      "</div>"
-    );
+  _updateCamera() {
+    const host = this.shadowRoot.getElementById("camera-host");
+    if (!host) return;
+
+    const hide = () => {
+      if (host.innerHTML) host.innerHTML = "";
+      this._camSrc = null;
+    };
+
+    if (!this._config.show_camera) return hide();
+
+    const camId = "camera." + this._config.prefix + "_machine_camera";
+    const s = this._st(camId);
+    const token = s && s.attributes ? s.attributes.access_token : null;
+    if (!s || !this._valid(token)) return hide();
+
+    const src =
+      "/api/camera_proxy_stream/" +
+      encodeURIComponent(camId) +
+      "?token=" +
+      encodeURIComponent(token);
+
+    let img = host.querySelector(".cam-img");
+    if (!img) {
+      host.innerHTML =
+        '<div class="panel camera">' +
+        '<img class="cam-img" alt="Machine camera" data-action="more-info" data-arg="' +
+        this._esc(camId) +
+        '"/>' +
+        "</div>";
+      img = host.querySelector(".cam-img");
+      this._camSrc = null;
+    }
+    if (img && src !== this._camSrc) {
+      img.src = src;
+      this._camSrc = src;
+    }
   }
 
   // ---- tool browser overlay --------------------------------------------
@@ -585,6 +922,7 @@ class DatronCockpitCard extends HTMLElement {
     if (!this._ovEl) return;
     this._ovOpen = true;
     this._ovSearch = "";
+    this._ovDetailTool = null;
     this._ovEl.style.display = "block";
     document.addEventListener("keydown", this._onKeyDown, true);
     this._openTab(tab || "magazine");
@@ -592,6 +930,7 @@ class DatronCockpitCard extends HTMLElement {
 
   _closeOverlay() {
     this._ovOpen = false;
+    this._ovDetailTool = null;
     if (this._ovEl) {
       this._ovEl.style.display = "none";
       this._ovEl.innerHTML = "";
@@ -602,13 +941,16 @@ class DatronCockpitCard extends HTMLElement {
   _onKeyDown(ev) {
     if (this._ovOpen && ev.key === "Escape") {
       ev.stopPropagation();
-      this._closeOverlay();
+      // Esc from the detail popup returns to the list; from the list, closes.
+      if (this._ovDetailTool) this._backToList();
+      else this._closeOverlay();
     }
   }
 
   _openTab(storage) {
     if (!this._ovEl) return;
     this._ovTab = storage;
+    this._ovDetailTool = null;
     this._renderOverlayShell();
     if (this._toolStatus[storage] === "ok") {
       this._renderOverlayList();
@@ -623,13 +965,7 @@ class DatronCockpitCard extends HTMLElement {
     let tools = [];
     let ok = false;
     try {
-      const prefix = this._config.prefix;
-      const deviceId = (
-        (this._hass &&
-          this._hass.entities &&
-          this._hass.entities["sensor." + prefix + "_status"]) ||
-        {}
-      ).device_id;
+      const deviceId = this._deviceId();
       const data = { storage: storage };
       if (deviceId) data.device_id = deviceId;
       const res = await this._hass.callService(
@@ -691,7 +1027,7 @@ class DatronCockpitCard extends HTMLElement {
       "</div>" +
       '<div class="ov-searchwrap">' +
       '<input class="ov-search" type="text" data-action="ov-search"' +
-      ' placeholder="Search tool, name, category, article…"' +
+      ' placeholder="Search name, category, ⌀, article…"' +
       ' value="' +
       this._esc(this._ovSearch) +
       '"/>' +
@@ -742,7 +1078,8 @@ class DatronCockpitCard extends HTMLElement {
 
     let rows = "";
     for (let i = 0; i < tools.length; i++) {
-      rows += this._toolRow(tools[i]);
+      const idx = all.indexOf(tools[i]);
+      rows += this._toolRow(tools[i], idx, storage);
     }
     list.innerHTML = rows;
   }
@@ -751,11 +1088,18 @@ class DatronCockpitCard extends HTMLElement {
     const fields = [
       t.toolNumber,
       t.name,
+      this._translateTerms(t.name),
       t.category,
+      this._translateCategory(t.category),
       t.articleNumber,
       t.description,
       t.vendor,
     ];
+    const gm = this._geomMap(t);
+    if (gm.Diameter != null) {
+      const d = this._mmVal(gm.Diameter, 2);
+      if (d !== null) fields.push(d);
+    }
     for (let i = 0; i < fields.length; i++) {
       const v = fields[i];
       if (v !== null && v !== undefined && String(v).toLowerCase().indexOf(q) !== -1)
@@ -764,50 +1108,221 @@ class DatronCockpitCard extends HTMLElement {
     return false;
   }
 
-  _toolRow(t) {
-    const num = t.toolNumber !== null && t.toolNumber !== undefined ? t.toolNumber : "?";
-    const name = this._valid(t.name) ? t.name : "Unnamed tool";
+  // Spec-first row: characteristics up top, translated name + article below.
+  _toolRow(t, idx, storage) {
     const cat = this._valid(t.category) ? t.category : "";
-    const desc = this._valid(t.description) ? t.description : "";
-    const meta = [cat, desc].filter((x) => x).join(" · ");
+    const gm = this._geomMap(t);
 
-    let wear = "";
-    const life = this._num(t.currentTotalLife);
-    const maxLife = this._num(t.maxToolLife);
-    const path = this._num(t.currentTotalPath);
-    const maxPath = this._num(t.maxToolPath);
-    if (maxLife !== null && maxLife > 0 && life !== null) {
-      const pct = Math.round((life / maxLife) * 100);
-      wear = '<span class="ov-pct">' + pct + "%</span>";
-      if (maxPath !== null && maxPath > 0 && path !== null) {
-        const pp = Math.round((path / maxPath) * 100);
-        wear += '<span class="ov-sub">' + pp + "% path</span>";
-      } else {
-        wear += '<span class="ov-sub">life</span>';
-      }
-    } else if (life !== null) {
-      wear =
-        '<span class="ov-pct">' +
-        Math.round(life) +
-        '</span><span class="ov-sub">min</span>';
+    const pieces = [];
+    if (gm.Diameter != null) {
+      const d = this._mmVal(gm.Diameter, 2);
+      if (d !== null) pieces.push("⌀" + d);
     }
+    if (gm.NumberOfFlutes != null) {
+      const n = Number(gm.NumberOfFlutes);
+      if (isFinite(n)) pieces.push(Math.round(n) + " FL");
+    }
+    if (gm.FluteLength != null) {
+      const f = this._mmVal(gm.FluteLength, 2);
+      if (f !== null) pieces.push("FL " + f);
+    }
+    if (gm.BodyLength != null) {
+      const b = this._mmVal(gm.BodyLength, 2);
+      if (b !== null) pieces.push("reach " + b);
+    }
+    const catLabel = this._translateCategory(cat);
+    if (catLabel) pieces.push(catLabel);
+    const spec = pieces.join(" · ") || catLabel || "Tool";
+
+    const name = this._valid(t.name)
+      ? this._translateTerms(t.name)
+      : "Unnamed tool";
+    const art = this._valid(t.articleNumber) ? t.articleNumber : "";
 
     return (
-      '<div class="ov-row">' +
+      '<div class="ov-row" data-action="ov-tool" data-arg="' +
+      this._esc(storage + ":" + idx) +
+      '">' +
       '<span class="ov-ic">' +
       this._toolIcon(cat) +
       "</span>" +
       '<span class="ov-main">' +
-      '<span class="ov-line1"><span class="ov-tno">T' +
-      this._esc(num) +
-      '</span><span class="ov-nm">' +
-      this._esc(name) +
-      "</span></span>" +
-      (meta ? '<span class="ov-meta">' + this._esc(meta) + "</span>" : "") +
+      '<span class="ov-spec">' +
+      this._esc(spec) +
       "</span>" +
-      (wear ? '<span class="ov-wear">' + wear + "</span>" : "") +
+      '<span class="ov-line2">' +
+      '<span class="ov-nm">' +
+      this._esc(name) +
+      "</span>" +
+      (art ? '<span class="ov-art">' + this._esc(art) + "</span>" : "") +
+      "</span>" +
+      "</span>" +
+      '<span class="ov-chev">' +
+      this._svgChevronRight() +
+      "</span>" +
       "</div>"
     );
+  }
+
+  // ---- tool detail popup -----------------------------------------------
+
+  _openToolDetail(storage, index) {
+    const arr = this._toolCache[storage] || [];
+    const t = arr[index];
+    if (!t) return;
+    this._ovDetailTool = t;
+    this._renderDetail(t);
+  }
+
+  _backToList() {
+    this._ovDetailTool = null;
+    this._renderOverlayShell();
+    this._renderOverlayList();
+  }
+
+  _dRow(attr, val) {
+    const label = GEOMETRY_LABELS[attr] || this._prettify(attr);
+    return (
+      '<div class="det-drow"><span class="det-dlabel">' +
+      this._esc(label) +
+      '</span><span class="det-dval">' +
+      this._esc(val) +
+      "</span></div>"
+    );
+  }
+
+  _detailGroupsHtml(t, gm) {
+    const groups = [
+      ["fluteGroup", "#f7931e"],
+      ["toricCutGroup", "#0064a0"],
+      ["shankGroup", "#8bc53f"],
+      ["toolLengthGroup", "#8a8a8a"],
+    ];
+    const used = {};
+    let html = "";
+    for (let g = 0; g < groups.length; g++) {
+      const key = groups[g][0];
+      const color = groups[g][1];
+      const attrs = Array.isArray(t[key]) ? t[key] : [];
+      let rows = "";
+      for (let i = 0; i < attrs.length; i++) {
+        const attr = attrs[i];
+        if (!(attr in gm)) continue;
+        const val = this._fmtAttrValue(attr, gm[attr]);
+        if (val === null) continue;
+        used[attr] = true;
+        rows += this._dRow(attr, val);
+      }
+      if (rows) {
+        html +=
+          '<div class="det-group" style="border-left-color:' +
+          color +
+          '">' +
+          rows +
+          "</div>";
+      }
+    }
+    // Any nominalGeometry attributes not covered by a group.
+    let extra = "";
+    for (const attr in gm) {
+      if (used[attr]) continue;
+      const val = this._fmtAttrValue(attr, gm[attr]);
+      if (val === null) continue;
+      extra += this._dRow(attr, val);
+    }
+    if (extra) {
+      html += '<div class="det-group ungrouped">' + extra + "</div>";
+    }
+    return html;
+  }
+
+  _detailLifeHtml(t) {
+    const maxLife = this._num(t.maxToolLife);
+    const life = this._num(t.currentTotalLife);
+    const maxPath = this._num(t.maxToolPath);
+    const path = this._num(t.currentTotalPath);
+    let badges = "";
+    if (maxLife !== null && maxLife > 0) {
+      const p = Math.round(((life || 0) / maxLife) * 100);
+      badges += '<span class="det-life">' + p + "% life</span>";
+    }
+    if (maxPath !== null && maxPath > 0) {
+      const p = Math.round(((path || 0) / maxPath) * 100);
+      badges += '<span class="det-life">' + p + "% path</span>";
+    }
+    return badges;
+  }
+
+  _detailInfoRow(icon, text) {
+    if (!this._valid(text)) return "";
+    return (
+      '<div class="det-inforow"><span class="det-infoic">' +
+      icon +
+      '</span><span class="det-infotext">' +
+      this._esc(text) +
+      "</span></div>"
+    );
+  }
+
+  _renderDetail(t) {
+    if (!this._ovEl) return;
+    const cat = this._valid(t.category) ? t.category : "";
+    const name = this._valid(t.name)
+      ? this._translateTerms(t.name)
+      : "Unnamed tool";
+    const art = this._valid(t.articleNumber) ? t.articleNumber : "";
+    const desc = this._valid(t.description)
+      ? this._translateTerms(t.description)
+      : "";
+    const comment = this._valid(t.comment) ? t.comment : "";
+    const vendor = this._valid(t.vendor) ? t.vendor : "";
+    const catLabel = this._translateCategory(cat);
+    const gm = this._geomMap(t);
+
+    const lifeHtml = this._detailLifeHtml(t);
+    const groupsHtml = this._detailGroupsHtml(t, gm);
+
+    let info = "";
+    info += this._detailInfoRow(this._svgInfo(), desc);
+    info += this._detailInfoRow(this._svgComment(), comment);
+    info += this._detailInfoRow(this._svgFactory(), vendor);
+    info += this._detailInfoRow(this._svgTag(), art);
+
+    this._ovEl.innerHTML =
+      '<div class="ov-backdrop" data-action="ov-close"></div>' +
+      '<div class="ov-panel det-panel" role="dialog" aria-label="Tool detail">' +
+      '<div class="ov-head det-head">' +
+      '<button class="ov-backbtn" data-action="ov-back" aria-label="Back">' +
+      this._svgChevronLeft() +
+      "</button>" +
+      '<span class="det-title">' +
+      this._esc(name) +
+      "</span>" +
+      '<span class="ov-spacer"></span>' +
+      (art ? '<span class="det-art-h">' + this._esc(art) + "</span>" : "") +
+      '<button class="ov-x" data-action="ov-close" aria-label="Close">' +
+      this._svgClose() +
+      "</button>" +
+      "</div>" +
+      '<div class="det-body">' +
+      '<div class="det-hero">' +
+      '<span class="det-ic">' +
+      this._toolIcon(cat) +
+      "</span>" +
+      '<div class="det-herometa">' +
+      (catLabel ? '<div class="det-cat">' + this._esc(catLabel) + "</div>" : "") +
+      (lifeHtml ? '<div class="det-lives">' + lifeHtml + "</div>" : "") +
+      "</div>" +
+      "</div>" +
+      (info ? '<div class="det-info">' + info + "</div>" : "") +
+      (groupsHtml
+        ? '<div class="det-section-title">Tool data</div>' +
+          '<div class="det-groups">' +
+          groupsHtml +
+          "</div>"
+        : "") +
+      "</div>" +
+      "</div>";
   }
 
   _toolIcon(category) {
@@ -826,6 +1341,24 @@ class DatronCockpitCard extends HTMLElement {
 
   _svgChevron() {
     return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  }
+  _svgChevronRight() {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  }
+  _svgChevronLeft() {
+    return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
+  }
+  _svgInfo() {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>';
+  }
+  _svgComment() {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"/></svg>';
+  }
+  _svgFactory() {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 20V10l5 3V10l5 3V6l6 3v11"/></svg>';
+  }
+  _svgTag() {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l8-8h8v8l-8 8-8-8z"/><circle cx="15" cy="9" r="1.4" fill="currentColor" stroke="none"/></svg>';
   }
   _svgStopwatch() {
     return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6"/><path d="M12 2v2"/><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M18.5 6.5l1.5-1.5"/></svg>';
@@ -924,12 +1457,48 @@ class DatronCockpitCard extends HTMLElement {
       .panel.ok { background:${GREEN}; color:#fff; }
 
       /* Notification */
+      .notif-wrap { display:flex; flex-direction:column; }
       .notif { display:flex; align-items:center; gap:12px; }
+      .notif.tap { cursor:pointer; transition:background .12s; }
+      .notif.tap:hover { background:#565656; }
       .notif-msg {
         flex:1; min-width:0; font-size:14px; font-weight:400; color:#ececec;
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
       }
-      .notif-chev { color:#bdbdbd; display:inline-flex; flex-shrink:0; }
+      .notif-chev {
+        color:#bdbdbd; display:inline-flex; flex-shrink:0;
+        transition:transform .18s ease;
+      }
+      .notif-chev.open { transform:rotate(180deg); }
+      .notif-drop {
+        margin-top:4px; background:#3a3a3a; border:1px solid #454545;
+        border-radius:3px; overflow:hidden;
+      }
+      .notif-drophead {
+        display:flex; align-items:center; gap:8px;
+        padding:8px 12px; border-bottom:1px solid #4a4a4a;
+      }
+      .notif-count { font-size:12px; color:#b5b5b5; font-variant-numeric:tabular-nums; }
+      .notif-spacer2 { flex:1; }
+      .notif-progbtn {
+        cursor:pointer; background:#4a4a4a; color:#dcdcdc; border:1px solid #565656;
+        border-radius:3px; padding:5px 10px; font-size:12px; letter-spacing:.3px;
+        transition:background .12s, color .12s;
+      }
+      .notif-progbtn:hover { background:#565656; color:#fff; }
+      .notif-items { max-height:280px; overflow-y:auto; }
+      .notif-item {
+        display:flex; align-items:flex-start; gap:10px;
+        padding:8px 12px; border-bottom:1px solid #333;
+      }
+      .notif-item:last-child { border-bottom:none; }
+      .notif-item.temp { opacity:.5; }
+      .notif-dot {
+        width:9px; height:9px; border-radius:50%; margin-top:5px; flex-shrink:0;
+      }
+      .notif-itxt { font-size:13px; color:#e2e2e2; line-height:1.35; word-break:break-word; }
+      .notif-item.temp .notif-itxt { color:#b5b5b5; }
+      .notif-msg2 { padding:16px 12px; text-align:center; color:#9a9a9a; font-size:13px; }
 
       /* Dialog */
       .dialog.closed { color:#9a9a9a; font-size:14px; font-weight:400; }
@@ -1031,7 +1600,8 @@ class DatronCockpitCard extends HTMLElement {
         opacity:.4; cursor:not-allowed; pointer-events:none;
       }
 
-      /* Camera */
+      /* Camera (persistent host, MJPEG stream) */
+      #camera-host:not(:empty) { margin-top:8px; }
       .camera { padding:0; overflow:hidden; }
       .cam-img { width:100%; display:block; cursor:pointer; background:#111; }
 
@@ -1083,7 +1653,7 @@ class DatronCockpitCard extends HTMLElement {
       }
       .ov-msg { padding:22px 8px; text-align:center; color:#9a9a9a; font-size:14px; }
       .ov-row {
-        display:flex; align-items:center; gap:12px;
+        display:flex; align-items:center; gap:12px; cursor:pointer;
         padding:9px 8px; border-radius:4px;
       }
       .ov-row:hover { background:#363636; }
@@ -1093,22 +1663,74 @@ class DatronCockpitCard extends HTMLElement {
         background:#3a3a3a; color:${GREEN};
       }
       .ov-main { display:flex; flex-direction:column; min-width:0; flex:1; gap:2px; }
-      .ov-line1 { display:flex; align-items:baseline; gap:8px; min-width:0; }
-      .ov-tno { font-size:14px; font-weight:700; color:#fff; flex-shrink:0; font-variant-numeric:tabular-nums; }
+      .ov-spec {
+        font-size:13.5px; font-weight:500; color:#fff; letter-spacing:.2px;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      }
+      .ov-line2 { display:flex; align-items:baseline; gap:8px; min-width:0; }
       .ov-nm {
-        font-size:14px; font-weight:400; color:#e6e6e6;
+        font-size:12.5px; font-weight:400; color:#bdbdbd; min-width:0;
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
       }
-      .ov-meta {
-        font-size:12px; color:#9a9a9a;
+      .ov-art {
+        font-size:11px; color:#8f8f8f; flex-shrink:0; font-variant-numeric:tabular-nums;
+      }
+      .ov-chev { display:inline-flex; color:#6f6f6f; flex-shrink:0; }
+
+      /* Tool detail popup */
+      .det-panel { }
+      .det-head { padding-left:6px; }
+      .ov-backbtn {
+        display:inline-flex; align-items:center; justify-content:center;
+        width:30px; height:30px; padding:0; cursor:pointer;
+        background:transparent; border:none; color:#cfcfcf; border-radius:4px;
+        transition:background .12s, color .12s; flex-shrink:0;
+      }
+      .ov-backbtn:hover { background:#3a3a3a; color:#fff; }
+      .det-title {
+        font-size:16px; font-weight:400; color:#fff; min-width:0;
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
       }
-      .ov-wear {
-        display:flex; flex-direction:column; align-items:flex-end; flex-shrink:0;
-        line-height:1.1; text-align:right;
+      .det-art-h { font-size:12px; color:#b5b5b5; font-variant-numeric:tabular-nums; flex-shrink:0; }
+      .det-body { overflow-y:auto; padding:4px 16px 16px; max-height:66vh; }
+      .det-hero {
+        display:flex; align-items:center; gap:16px; padding:10px 0 14px;
       }
-      .ov-pct { font-size:16px; font-weight:300; color:#fff; font-variant-numeric:tabular-nums; }
-      .ov-sub { font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:#9a9a9a; }
+      .det-ic {
+        display:inline-flex; align-items:center; justify-content:center;
+        width:72px; height:72px; border-radius:8px; flex-shrink:0;
+        background:#3a3a3a; color:${GREEN};
+      }
+      .det-ic svg { width:52px; height:52px; }
+      .det-herometa { display:flex; flex-direction:column; gap:8px; min-width:0; }
+      .det-cat { font-size:15px; font-weight:500; color:#ececec; }
+      .det-lives { display:flex; flex-wrap:wrap; gap:6px; }
+      .det-life {
+        font-size:12px; color:#232323; background:${GREEN};
+        border-radius:10px; padding:3px 10px; font-weight:600;
+        font-variant-numeric:tabular-nums;
+      }
+      .det-info { display:flex; flex-direction:column; gap:2px; padding:4px 0 6px; }
+      .det-inforow { display:flex; align-items:flex-start; gap:10px; padding:6px 0; }
+      .det-infoic { display:inline-flex; color:#8f8f8f; flex-shrink:0; margin-top:1px; }
+      .det-infotext { font-size:13px; color:#dcdcdc; line-height:1.4; word-break:break-word; }
+      .det-section-title {
+        font-size:12px; text-transform:uppercase; letter-spacing:.6px;
+        color:#8f8f8f; margin:12px 0 8px;
+      }
+      .det-groups { display:flex; flex-direction:column; gap:8px; }
+      .det-group {
+        border-left:3px solid #8a8a8a; background:#363636; border-radius:0 4px 4px 0;
+        padding:4px 12px;
+      }
+      .det-group.ungrouped { border-left-color:#5a5a5a; }
+      .det-drow {
+        display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+        padding:6px 0; border-bottom:1px solid #414141;
+      }
+      .det-drow:last-child { border-bottom:none; }
+      .det-dlabel { font-size:13px; color:#bdbdbd; }
+      .det-dval { font-size:13px; color:#fff; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
 
       @media (max-width:460px) {
         .hcockpit { font-size:18px; }

@@ -119,6 +119,7 @@ SVC_SET_VARIABLE = "set_variable"
 SVC_GET_VARIABLE = "get_variable"
 SVC_DIAGNOSTICS = "diagnostics"
 SVC_GET_TOOLS = "get_tools"
+SVC_GET_NOTIFICATIONS = "get_notifications"
 
 # ── Service schemas ───────────────────────────────────────────────────────────
 _PATH_SCHEMA = vol.Schema({vol.Required("path"): cv.string})
@@ -148,6 +149,11 @@ _GET_TOOLS_SCHEMA = vol.Schema(
         vol.Required("storage"): vol.In(
             ["magazine", "warehouse", "program", "spindle"]
         ),
+        vol.Optional("device_id"): cv.string,
+    }
+)
+_GET_NOTIFICATIONS_SCHEMA = vol.Schema(
+    {
         vol.Optional("device_id"): cv.string,
     }
 )
@@ -554,6 +560,29 @@ def _register_services(hass: HomeAssistant) -> None:
         supports_response=SupportsResponse.ONLY,
     )
 
+    async def handle_get_notifications(call: ServiceCall) -> dict:
+        """Return the machine's notification history (for the card dropdown).
+
+        Read-only; returns ``{count, notifications: [{type, message}, ...]}``
+        newest-first. device_id (optional) targets a specific machine.
+        """
+        client = _client_for_device(hass, call.data.get("device_id"))
+        try:
+            items = await client.get_notifications()
+        except DatronApiError as err:
+            _LOGGER.error("get_notifications error: %s", err)
+            raise
+        notifications = items if isinstance(items, list) else []
+        return {"count": len(notifications), "notifications": notifications}
+
+    hass.services.async_register(
+        DOMAIN,
+        SVC_GET_NOTIFICATIONS,
+        handle_get_notifications,
+        schema=_GET_NOTIFICATIONS_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bool:
     """Unload a config entry."""
@@ -574,6 +603,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> b
                 SVC_GET_VARIABLE,
                 SVC_DIAGNOSTICS,
                 SVC_GET_TOOLS,
+                SVC_GET_NOTIFICATIONS,
             ):
                 hass.services.async_remove(DOMAIN, svc)
 
