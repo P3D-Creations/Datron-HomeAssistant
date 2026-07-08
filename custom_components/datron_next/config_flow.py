@@ -224,14 +224,17 @@ class DatronNextConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Return the options flow handler."""
-        return DatronOptionsFlow(config_entry)
+        return DatronOptionsFlow()
 
 
 class DatronOptionsFlow(OptionsFlow):
-    """Options flow — adjust token, extra SimPL roots, rotary-axis toggle."""
+    """Options flow — adjust token, extra SimPL roots, rotary-axis toggle.
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+    ``config_entry`` is provided by the ``OptionsFlow`` base class as a
+    read-only property (Home Assistant injects it), so we must NOT define an
+    ``__init__`` that assigns to it — doing so raises
+    ``AttributeError: property 'config_entry' ... has no setter`` on current HA.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

@@ -351,7 +351,14 @@ class DatronLiveMachineCamera(Camera):
         return self._cached_image
 
     async def handle_async_mjpeg_stream(self, request):
-        """Serve the MJPEG stream through HA (proxied to the machine)."""
+        """Serve the MJPEG stream through HA (proxied to the machine).
+
+        ``async_aiohttp_proxy_web`` expects an *un-awaited* request coroutine
+        (it awaits it internally and maps connection errors to HTTP 502) — the
+        same pattern HA's own ``mjpeg`` camera uses. Passing an already-awaited
+        ``ClientResponse`` raises ``TypeError: object can't be awaited``. Also
+        re-resolve the stream URL for next time so a changed port self-heals.
+        """
         from homeassistant.helpers.aiohttp_client import (
             async_aiohttp_proxy_web,
         )
@@ -361,16 +368,15 @@ class DatronLiveMachineCamera(Camera):
             return await super().handle_async_mjpeg_stream(request)
 
         session = async_get_clientsession(self.hass)
+        stream_coro = session.get(
+            url,
+            timeout=aiohttp.ClientTimeout(total=None, sock_connect=10),
+            auth=self._stream_auth,
+        )
         try:
-            stream = await session.get(
-                url,
-                timeout=aiohttp.ClientTimeout(total=None, sock_connect=10),
-                auth=self._stream_auth,
-            )
+            return await async_aiohttp_proxy_web(self.hass, request, stream_coro)
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.debug("Live camera MJPEG proxy connect failed: %s", err)
-            # Port may have changed — re-resolve once for next time.
+            _LOGGER.debug("Live camera MJPEG proxy failed: %s", err)
+            # Port may have changed — re-resolve once so the next request recovers.
             await self._resolve_stream(force=True)
-            return await super().handle_async_mjpeg_stream(request)
-
-        return await async_aiohttp_proxy_web(self.hass, request, stream)
+            return None
