@@ -17,15 +17,17 @@ from typing import Any
 
 from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.entity import DeviceInfo, EntityCategory
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
 from .api import DatronApiClient, DatronApiError, DatronStateError
 from .const import (
+    CONF_CONNECTION_TYPE,
+    CONNECTION_LIVE,
+    CONNECTION_NEXT,
     COORD_FAST,
     COORD_MEDIUM,
     COORD_SLOW,
@@ -35,19 +37,24 @@ from .const import (
     RUNNING_STATES,
 )
 from .coordinator import _directory_to_simpl_root
+from .entity import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
+# Button keys kept for Datron Live entries. Everything else (Start / Abort /
+# Park / Reload / Load-Selected / Execute-Selected) has no Live backing.
+LIVE_BUTTON_KEYS = {
+    "refresh_data",
+    "pause_program",
+    "resume_program",
+    "confirm_dialog_ok",
+    "confirm_dialog_cancel",
+    "activate_machine",
+}
 
-def _device_info(entry: ConfigEntry) -> DeviceInfo:
-    return DeviceInfo(
-        identifiers={(DOMAIN, entry.entry_id)},
-        name=entry.title,
-        manufacturer="Datron",
-        model="M8Cube",
-        sw_version="NEXT",
-        configuration_url=f"http://{entry.data[CONF_HOST]}",
-    )
+
+def _device_info(entry: ConfigEntry):
+    return build_device_info(entry)
 
 
 def _execution_state(fast_data: dict[str, Any] | None) -> str | None:
@@ -72,12 +79,16 @@ async def async_setup_entry(
     slow_coordinator: DataUpdateCoordinator = data[COORD_SLOW]
     selection_state: dict[str, Any] = data.setdefault("selection", {})
 
-    entities: list[ButtonEntity] = [
+    connection_type = data.get(CONF_CONNECTION_TYPE, CONNECTION_NEXT)
+    is_live = connection_type == CONNECTION_LIVE
+
+    # (key, factory) pairs — the key drives Live gating.
+    button_specs: list[tuple[str, ButtonEntity]] = [
         # ── Data management ──────────────────────────────────
-        DatronRefreshButton(entry=entry, coordinators=data),
+        ("refresh_data", DatronRefreshButton(entry=entry, coordinators=data)),
 
         # ── Program execution control (Automation API) ───────
-        DatronStateGatedActionButton(
+        ("start_program", DatronStateGatedActionButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -86,8 +97,8 @@ async def async_setup_entry(
             icon="mdi:play",
             action=client.execute_loaded_program,
             allowed_states=IDLE_STATES,
-        ),
-        DatronStateGatedActionButton(
+        )),
+        ("pause_program", DatronStateGatedActionButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -96,8 +107,8 @@ async def async_setup_entry(
             icon="mdi:pause-circle",
             action=client.pause_execution,
             allowed_states=RUNNING_STATES,
-        ),
-        DatronStateGatedActionButton(
+        )),
+        ("resume_program", DatronStateGatedActionButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -106,8 +117,8 @@ async def async_setup_entry(
             icon="mdi:play-circle",
             action=client.resume_execution,
             allowed_states=PAUSED_STATES,
-        ),
-        DatronStateGatedActionButton(
+        )),
+        ("abort_program", DatronStateGatedActionButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -117,8 +128,8 @@ async def async_setup_entry(
             device_class=ButtonDeviceClass.RESTART,
             action=client.abort_execution,
             allowed_states=RUNNING_STATES | PAUSED_STATES,
-        ),
-        DatronStateGatedActionButton(
+        )),
+        ("move_to_park_position", DatronStateGatedActionButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -128,17 +139,17 @@ async def async_setup_entry(
             action=client.move_to_park_position,
             # Park should only fire when the machine isn't actively running.
             allowed_states=IDLE_STATES | PAUSED_STATES,
-        ),
+        )),
 
         # ── Program management ───────────────────────────────
-        DatronReloadProgramButton(
+        ("reload_program", DatronReloadProgramButton(
             entry=entry,
             client=client,
             medium_coordinator=medium_coordinator,
             slow_coordinator=slow_coordinator,
             fast_coordinator=fast_coordinator,
-        ),
-        DatronSelectedProgramActionButton(
+        )),
+        ("load_selected_program", DatronSelectedProgramActionButton(
             entry=entry,
             client=client,
             fast_coordinator=fast_coordinator,
@@ -148,8 +159,8 @@ async def async_setup_entry(
             name="Load Selected Program",
             icon="mdi:file-upload",
             execute=False,
-        ),
-        DatronSelectedProgramActionButton(
+        )),
+        ("execute_selected_program", DatronSelectedProgramActionButton(
             entry=entry,
             client=client,
             fast_coordinator=fast_coordinator,
@@ -159,10 +170,10 @@ async def async_setup_entry(
             name="Execute Selected Program",
             icon="mdi:rocket-launch",
             execute=True,
-        ),
+        )),
 
         # ── Dialog control (Automation API) ──────────────────
-        DatronConfirmDialogButton(
+        ("confirm_dialog_ok", DatronConfirmDialogButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -170,8 +181,8 @@ async def async_setup_entry(
             name="Confirm Dialog (OK)",
             icon="mdi:check-circle",
             pick_left=False,
-        ),
-        DatronConfirmDialogButton(
+        )),
+        ("confirm_dialog_cancel", DatronConfirmDialogButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -179,8 +190,8 @@ async def async_setup_entry(
             name="Confirm Dialog (Cancel)",
             icon="mdi:cancel",
             pick_left=True,
-        ),
-        DatronDialogLabelButton(
+        )),
+        ("activate_machine", DatronDialogLabelButton(
             entry=entry,
             client=client,
             coordinator=fast_coordinator,
@@ -188,7 +199,13 @@ async def async_setup_entry(
             name="Activate Machine",
             icon="mdi:shield-check",
             match_label="Activate",
-        ),
+        )),
+    ]
+
+    entities: list[ButtonEntity] = [
+        button
+        for key, button in button_specs
+        if not is_live or key in LIVE_BUTTON_KEYS
     ]
     async_add_entities(entities)
 
@@ -522,13 +539,24 @@ class DatronConfirmDialogButton(CoordinatorEntity, ButtonEntity):
 
         primary_key = "leftButtons" if self._pick_left else "rightButtons"
         fallback_key = "rightButtons" if self._pick_left else "leftButtons"
-        buttons: list[str] = dialog.get(primary_key) or dialog.get(fallback_key) or []
-        if not buttons:
-            raise HomeAssistantError(
-                f"Dialog '{dialog.get('caption', '')}' has no buttons to click"
-            )
 
-        button_label = buttons[0]
+        primary: list[str] = dialog.get(primary_key) or []
+        if primary:
+            # NEXT dialogs carry both leftButtons and rightButtons, so each
+            # button hits its own side (unchanged behaviour).
+            button_label = primary[0]
+        else:
+            # Datron Live dialogs expose only rightButtons. When the "Cancel"
+            # button (pick_left) has to fall back to that shared list, choose the
+            # LAST label so it never presses the same button as the "OK" button
+            # (which presses the first) — pressing the primary action on a CNC
+            # "Cancel" would be dangerous.
+            fallback: list[str] = dialog.get(fallback_key) or []
+            if not fallback:
+                raise HomeAssistantError(
+                    f"Dialog '{dialog.get('caption', '')}' has no buttons to click"
+                )
+            button_label = fallback[-1] if self._pick_left else fallback[0]
         _LOGGER.debug(
             "Confirming dialog '%s' with button '%s'",
             dialog.get("caption", ""),

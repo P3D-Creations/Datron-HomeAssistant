@@ -17,26 +17,18 @@ from typing import Any
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import COORD_SLOW, DOMAIN
+from .const import CONF_CONNECTION_TYPE, CONNECTION_LIVE, CONNECTION_NEXT, COORD_SLOW, DOMAIN
+from .entity import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _device_info(entry: ConfigEntry) -> DeviceInfo:
-    return DeviceInfo(
-        identifiers={(DOMAIN, entry.entry_id)},
-        name=entry.title,
-        manufacturer="Datron",
-        model="M8Cube",
-        sw_version="NEXT",
-        configuration_url=f"http://{entry.data[CONF_HOST]}",
-    )
+def _device_info(entry: ConfigEntry):
+    return build_device_info(entry)
 
 
 async def async_setup_entry(
@@ -45,6 +37,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
+
+    # The SimPL program select has no Datron Live equivalent (Live has no
+    # filesystem enumeration), so skip it for Live entries.
+    if data.get(CONF_CONNECTION_TYPE, CONNECTION_NEXT) == CONNECTION_LIVE:
+        return
+
     slow_coordinator: DataUpdateCoordinator = data[COORD_SLOW]
     selection_state: dict[str, Any] = data.setdefault("selection", {})
 

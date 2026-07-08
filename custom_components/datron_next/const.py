@@ -8,7 +8,25 @@ CONF_PORT = "port"
 CONF_EXTRA_SIMPL_ROOTS = "extra_simpl_roots"
 CONF_HAS_ROTARY_AXES = "has_rotary_axes"
 
+# ── Connection type (NEXT vs Datron Live) ────────────────────────────────
+# Existing config entries created before this feature have NO connection_type
+# key; consumers MUST default to CONNECTION_NEXT so they behave exactly as
+# they did before.
+CONF_CONNECTION_TYPE = "connection_type"
+CONF_USERNAME = "username"
+CONF_PASSWORD = "password"
+# Machine model captured at config time (Live). Absent on NEXT / legacy entries,
+# which fall back to the historical hard-coded "M8Cube".
+CONF_MODEL = "model"
+CONNECTION_NEXT = "next"
+CONNECTION_LIVE = "live"
+
+# Historical hard-coded device model, kept as the fallback so existing NEXT
+# entries' device-registry model is unchanged.
+DEFAULT_MODEL = "M8Cube"
+
 DEFAULT_PORT = 80
+DEFAULT_LIVE_PORT = 443
 DEFAULT_HAS_ROTARY_AXES = True
 API_VERSION = "2"
 

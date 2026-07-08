@@ -30,13 +30,12 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import DOMAIN
+from .entity import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,14 +82,7 @@ def _fmt_duration(seconds: float | None) -> str:
 
 
 def _device_info(entry: ConfigEntry) -> DeviceInfo:
-    return DeviceInfo(
-        identifiers={(DOMAIN, entry.entry_id)},
-        name=entry.title,
-        manufacturer="Datron",
-        model="M8Cube",
-        sw_version="NEXT",
-        configuration_url=f"http://{entry.data[CONF_HOST]}",
-    )
+    return build_device_info(entry)
 
 
 # ── Known Cycle Time Store ────────────────────────────────────────────────────

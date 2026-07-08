@@ -10,14 +10,20 @@ import aiohttp
 
 from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import DatronApiClient
-from .const import API_VERSION, DOMAIN
+from .const import (
+    API_VERSION,
+    CONF_CONNECTION_TYPE,
+    CONNECTION_LIVE,
+    CONNECTION_NEXT,
+    DOMAIN,
+)
+from .entity import build_device_info
+from .live_api import DatronLiveClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,17 +32,28 @@ _LOGGER = logging.getLogger(__name__)
 _IMAGE_TIMEOUT = aiohttp.ClientTimeout(total=5)
 _TOKEN_MAX_AGE_S = 120  # seconds before forcing a token refresh
 
+# Live MJPEG helpers
+_MJPEG_TIMEOUT = aiohttp.ClientTimeout(total=15)
+_STREAM_URL_MAX_AGE_S = 300  # re-resolve the stream URL periodically
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Datron NEXT camera entities from a config entry."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    client: DatronApiClient = data["client"]
+    """Set up Datron camera entities from a config entry.
 
-    entities = [DatronMachineCamera(hass=hass, entry=entry, client=client)]
+    NEXT entries get a token-per-frame snapshot camera; Datron Live entries get
+    an MJPEG stream camera.
+    """
+    data = hass.data[DOMAIN][entry.entry_id]
+    client = data["client"]
+
+    if data.get(CONF_CONNECTION_TYPE, CONNECTION_NEXT) == CONNECTION_LIVE:
+        entities = [DatronLiveMachineCamera(hass=hass, entry=entry, client=client)]
+    else:
+        entities = [DatronMachineCamera(hass=hass, entry=entry, client=client)]
     async_add_entities(entities)
 
 
@@ -80,14 +97,7 @@ class DatronMachineCamera(Camera):
         self._host_prefix = f"http://{client._host}:{client._port}"
 
         self._attr_unique_id = f"{entry.entry_id}_machine_camera"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.title,
-            manufacturer="Datron",
-            model="M8Cube",
-            sw_version="NEXT",
-            configuration_url=f"http://{entry.data[CONF_HOST]}",
-        )
+        self._attr_device_info = build_device_info(entry)
 
         # Cached state
         self._token_url: str | None = None
@@ -186,3 +196,181 @@ class DatronMachineCamera(Camera):
                 return data
 
         return self._cached_image
+
+
+class DatronLiveMachineCamera(Camera):
+    """MJPEG camera entity for Datron Live entries.
+
+    Datron Live exposes a standard MJPEG stream. The stream URL is resolved
+    from ``GET /api/v2.0/Camera/Configuration`` →
+    ``[{url, port, isAuthenticationRequired, userName, passWord}]`` and built as
+    ``http://{host}:{port}{url}`` (scheme is **http**, port from the config,
+    e.g. 44347). The URL is cached and re-resolved periodically and on error
+    (the port can change across machine restarts).
+
+    ``isAuthenticationRequired`` was false on the reference machine; when true,
+    the configured userName/passWord are honoured as HTTP basic auth.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Machine Camera"
+    # Intentionally NOT declaring CameraEntityFeature.STREAM: the source is a
+    # multipart/x-mixed-replace MJPEG stream, which HA's stream (HLS/PyAV)
+    # worker cannot ingest. Declaring STREAM would route the frontend to the
+    # stream worker and break the live view; instead we serve frames via
+    # async_camera_image and proxy the live view via handle_async_mjpeg_stream,
+    # exactly as HA's own mjpeg integration does.
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        client: DatronLiveClient,
+    ) -> None:
+        super().__init__()
+        self._entry = entry
+        self._client = client
+
+        self._attr_unique_id = f"{entry.entry_id}_machine_camera"
+        self._attr_device_info = build_device_info(entry)
+        self._attr_is_streaming = True
+
+        # Cached stream configuration
+        self._stream_url: str | None = None
+        self._stream_auth: aiohttp.BasicAuth | None = None
+        self._stream_ts: float = 0.0
+        self._stream_lock = asyncio.Lock()
+        self._cached_image: bytes | None = None
+
+    # ── internal helpers ──────────────────────────────────────
+
+    async def _resolve_stream(self, force: bool = False) -> str | None:
+        """Resolve (and cache) the MJPEG stream URL + optional basic auth."""
+        now = time.monotonic()
+        if (
+            not force
+            and self._stream_url
+            and (now - self._stream_ts) < _STREAM_URL_MAX_AGE_S
+        ):
+            return self._stream_url
+
+        async with self._stream_lock:
+            now = time.monotonic()
+            if (
+                not force
+                and self._stream_url
+                and (now - self._stream_ts) < _STREAM_URL_MAX_AGE_S
+            ):
+                return self._stream_url
+
+            try:
+                configs = await self._client.get_camera_configuration()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Live camera configuration fetch failed: %s", err)
+                return self._stream_url  # keep whatever we had
+
+            url: str | None = None
+            auth: aiohttp.BasicAuth | None = None
+            if configs:
+                cfg = configs[0]
+                if isinstance(cfg, dict):
+                    raw_url = cfg.get("url")
+                    port = cfg.get("port")
+                    if raw_url and port is not None:
+                        url = f"http://{self._client._host}:{port}{raw_url}"
+                    if cfg.get("isAuthenticationRequired"):
+                        user = cfg.get("userName") or ""
+                        pwd = cfg.get("passWord") or ""
+                        if user:
+                            auth = aiohttp.BasicAuth(user, pwd)
+
+            if url:
+                self._stream_url = url
+                self._stream_auth = auth
+                self._stream_ts = time.monotonic()
+                _LOGGER.debug("Live camera stream URL resolved: %s", url)
+            return self._stream_url
+
+    async def _read_one_frame(self, url: str) -> bytes | None:
+        """Read a single JPEG frame from the MJPEG multipart stream.
+
+        Reads from the stream until one complete JPEG (SOI ``\\xff\\xd8`` …
+        EOI ``\\xff\\xd9``) has been captured, then closes the connection.
+        """
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.get(
+                url, timeout=_MJPEG_TIMEOUT, auth=self._stream_auth
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.debug("Live camera stream HTTP %s", resp.status)
+                    return None
+                buffer = b""
+                # Cap total read at ~2 MB so a malformed stream can't spin.
+                while len(buffer) < 2 * 1024 * 1024:
+                    chunk = await resp.content.read(16384)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    start = buffer.find(b"\xff\xd8")
+                    if start == -1:
+                        continue
+                    end = buffer.find(b"\xff\xd9", start + 2)
+                    if end == -1:
+                        continue
+                    return buffer[start : end + 2]
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.debug("Live camera frame read error: %s", err)
+        return None
+
+    # ── HA Camera interface ───────────────────────────────────
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Return a single JPEG frame extracted from the MJPEG stream."""
+        url = await self._resolve_stream()
+        if not url:
+            return self._cached_image
+
+        data = await self._read_one_frame(url)
+        if data:
+            self._cached_image = data
+            return data
+
+        # The stream URL / port may have changed — force a re-resolve and
+        # retry once.
+        _LOGGER.debug("Live camera frame failed; re-resolving stream URL")
+        url = await self._resolve_stream(force=True)
+        if url:
+            data = await self._read_one_frame(url)
+            if data:
+                self._cached_image = data
+                return data
+
+        return self._cached_image
+
+    async def handle_async_mjpeg_stream(self, request):
+        """Serve the MJPEG stream through HA (proxied to the machine)."""
+        from homeassistant.helpers.aiohttp_client import (
+            async_aiohttp_proxy_web,
+        )
+
+        url = await self._resolve_stream()
+        if not url:
+            return await super().handle_async_mjpeg_stream(request)
+
+        session = async_get_clientsession(self.hass)
+        try:
+            stream = await session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=None, sock_connect=10),
+                auth=self._stream_auth,
+            )
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.debug("Live camera MJPEG proxy connect failed: %s", err)
+            # Port may have changed — re-resolve once for next time.
+            await self._resolve_stream(force=True)
+            return await super().handle_async_mjpeg_stream(request)
+
+        return await async_aiohttp_proxy_web(self.hass, request, stream)

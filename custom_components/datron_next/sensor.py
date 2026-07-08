@@ -13,18 +13,42 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, PERCENTAGE, UnitOfLength, UnitOfPressure, UnitOfTime
+from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfPressure, UnitOfTime
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import COORD_AXIS, COORD_FAST, COORD_MEDIUM, COORD_SLOW, DOMAIN
+from .const import (
+    CONF_CONNECTION_TYPE,
+    CONNECTION_LIVE,
+    CONNECTION_NEXT,
+    COORD_AXIS,
+    COORD_FAST,
+    COORD_MEDIUM,
+    COORD_SLOW,
+    DOMAIN,
+)
+from .entity import build_device_info
 from .execution_sensor import (
     DatronCycleHistorySensor,
     DatronEstimatedRemainingSensor,
     KnownCycleTimeStore,
 )
+
+# Sensor keys with no Datron Live data source — dropped for Live entries.
+LIVE_UNSUPPORTED_SENSOR_KEYS = {
+    "axis_x",
+    "axis_y",
+    "axis_z",
+    "axis_a",
+    "axis_b",
+    "axis_c",
+    "feed_override_cutting",
+    "feed_override_positioning",
+    "spindle_runtime",
+    "machine_runtime",
+    "software_version",
+}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -527,6 +551,16 @@ async def async_setup_entry(
     has_rotary_axes: bool = bool(data.get("has_rotary_axes", True))
     rotary_keys = {"axis_a", "axis_b", "axis_c"}
 
+    connection_type = data.get(CONF_CONNECTION_TYPE, CONNECTION_NEXT)
+    is_live = connection_type == CONNECTION_LIVE
+
+    def _include(desc: DatronSensorEntityDescription) -> bool:
+        if is_live and desc.key in LIVE_UNSUPPORTED_SENSOR_KEYS:
+            return False
+        if not has_rotary_axes and desc.key in rotary_keys:
+            return False
+        return True
+
     entities: list = [
         DatronSensor(
             coordinator=coordinators[desc.coordinator_key],
@@ -534,7 +568,7 @@ async def async_setup_entry(
             entry=entry,
         )
         for desc in ALL_SENSORS
-        if has_rotary_axes or desc.key not in rotary_keys
+        if _include(desc)
     ]
 
     # ── Stateful execution sensors ────────────────────────────────────
@@ -579,14 +613,7 @@ class DatronSensor(CoordinatorEntity, SensorEntity):
         self.entity_description = description
         self._attr_force_update = description.force_update
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.title,
-            manufacturer="Datron",
-            model="M8Cube",
-            sw_version="NEXT",
-            configuration_url=f"http://{entry.data[CONF_HOST]}",
-        )
+        self._attr_device_info = build_device_info(entry)
 
     @property
     def native_value(self) -> Any:

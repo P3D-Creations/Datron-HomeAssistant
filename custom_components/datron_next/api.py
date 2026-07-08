@@ -385,8 +385,12 @@ class DatronApiClient:
         if self._session is None:
             raise DatronApiError("No aiohttp session configured")
 
-        # Handle relative URLs
+        # Handle relative URLs. Ensure a leading slash so a relative path
+        # without one ("api/…") doesn't concatenate into "host:80api/…"
+        # (image.py previously normalised this before it was centralised here).
         if not url.startswith("http"):
+            if not url.startswith("/"):
+                url = f"/{url}"
             url = f"http://{self._host}:{self._port}{url}"
 
         _LOGGER.debug("Fetching image from URL: %s", url)

@@ -2,6 +2,14 @@
   "config": {
     "step": {
       "user": {
+        "title": "Select Connection Type",
+        "description": "Choose how to connect to your Datron CNC machine.",
+        "menu_options": {
+          "connection_next": "Datron NEXT (API bearer token)",
+          "connection_live": "Datron Live (username & password)"
+        }
+      },
+      "connection_next": {
         "title": "Connect to Datron NEXT",
         "description": "Enter the connection details for your Datron CNC machine.",
         "data": {
@@ -14,11 +22,27 @@
           "token": "The API bearer token for authentication. Obtain this from the DATRON NEXT control.",
           "port": "The HTTP port (default: 80)."
         }
+      },
+      "connection_live": {
+        "title": "Connect to Datron Live",
+        "description": "Enter the Datron Live (Cockpit web UI) login for your machine. The integration logs in with these credentials and refreshes the session token automatically.",
+        "data": {
+          "host": "Hostname or IP Address",
+          "username": "Username",
+          "password": "Password",
+          "port": "Port"
+        },
+        "data_description": {
+          "host": "The IP address or hostname of your Datron machine.",
+          "username": "The username you use to sign in to the Datron Live web interface.",
+          "password": "The password for the Datron Live account.",
+          "port": "The HTTPS port of the Datron Live web interface (default: 443)."
+        }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to the machine. Check the hostname and port.",
-      "invalid_auth": "Invalid authentication. Check your bearer token.",
+      "invalid_auth": "Invalid authentication. Check your credentials.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
@@ -27,7 +51,7 @@
   },
   "options": {
     "step": {
-      "init": {
+      "next_options": {
         "title": "Datron NEXT Options",
         "description": "Update the bearer token, add extra SimPL roots to scan, or toggle rotary-axis sensors.",
         "data": {
@@ -40,11 +64,23 @@
           "extra_simpl_roots": "Additional SimPL root paths to enumerate, one per line (e.g. network:\\\\Datron\\Programs). Useful when your network share's alias differs from its UNC server name.",
           "has_rotary_axes": "Turn off on 3-axis machines to hide the A/B/C axis-position sensors. Polling cost is unchanged — the Datron API returns all six axes in one call."
         }
+      },
+      "live_options": {
+        "title": "Datron Live Options",
+        "description": "Update the Datron Live username and password. New credentials are validated against the machine before being saved.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        },
+        "data_description": {
+          "username": "The username you use to sign in to the Datron Live web interface.",
+          "password": "The password for the Datron Live account."
+        }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect using the new token. Check the hostname and token.",
-      "invalid_auth": "Invalid authentication. Check your bearer token.",
+      "cannot_connect": "Failed to connect using the new credentials. Check the hostname and credentials.",
+      "invalid_auth": "Invalid authentication. Check your credentials.",
       "unknown": "An unexpected error occurred."
     }
   }

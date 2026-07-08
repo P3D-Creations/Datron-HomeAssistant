@@ -12,19 +12,28 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import DatronApiClient, DatronApiError
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+
+from .api import DatronApiClient, DatronApiError, DatronAuthError
 from .const import (
+    CONF_CONNECTION_TYPE,
     CONF_EXTRA_SIMPL_ROOTS,
     CONF_HAS_ROTARY_AXES,
+    CONF_PASSWORD,
     CONF_TOKEN,
+    CONF_USERNAME,
+    CONNECTION_LIVE,
+    CONNECTION_NEXT,
     COORD_AXIS,
     COORD_FAST,
     COORD_MEDIUM,
     COORD_SLOW,
     DEFAULT_HAS_ROTARY_AXES,
+    DEFAULT_LIVE_PORT,
     DEFAULT_PORT,
     DOMAIN,
 )
+from .live_api import DatronLiveClient
 from .coordinator import (
     DatronAxisCoordinator,
     DatronFastCoordinator,
@@ -101,20 +110,53 @@ def _get_fast_coordinator(hass: HomeAssistant) -> DatronFastCoordinator:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bool:
-    """Set up Datron NEXT from a config entry."""
+    """Set up Datron NEXT / Datron Live from a config entry."""
+    # Entries created before the Live feature have no connection_type key, so
+    # default to NEXT — those entries keep behaving exactly as before.
+    connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_NEXT)
     host = entry.data[CONF_HOST]
-    token = entry.data[CONF_TOKEN]
-    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
-
-    extra_roots: list[str] = list(entry.options.get(CONF_EXTRA_SIMPL_ROOTS) or [])
-    has_rotary_axes: bool = bool(
-        entry.options.get(CONF_HAS_ROTARY_AXES, DEFAULT_HAS_ROTARY_AXES)
-    )
 
     session = async_get_clientsession(hass)
-    client = DatronApiClient(host=host, token=token, port=port, session=session)
 
-    # Create coordinators
+    extra_roots: list[str] = list(entry.options.get(CONF_EXTRA_SIMPL_ROOTS) or [])
+
+    if connection_type == CONNECTION_LIVE:
+        port = entry.data.get(CONF_PORT, DEFAULT_LIVE_PORT)
+        client = DatronLiveClient(
+            host=host,
+            username=entry.data[CONF_USERNAME],
+            password=entry.data[CONF_PASSWORD],
+            port=port,
+            session=session,
+        )
+        # Capture the JWT token before the first coordinator refresh so the
+        # first poll cycle is already authenticated. Map failures to the HA
+        # setup-retry exceptions so a powered-off machine or wrong password is
+        # retried / surfaced for reauth instead of permanently failing the entry.
+        try:
+            await client.login()
+        except DatronAuthError as err:
+            _LOGGER.warning("Datron Live login rejected credentials: %s", err)
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except DatronApiError as err:
+            _LOGGER.warning(
+                "Datron Live login failed during setup (will retry): %s", err
+            )
+            raise ConfigEntryNotReady(str(err)) from err
+        # Live has no rotary-axis data source.
+        has_rotary_axes = False
+    else:
+        port = entry.data.get(CONF_PORT, DEFAULT_PORT)
+        token = entry.data[CONF_TOKEN]
+        client = DatronApiClient(host=host, token=token, port=port, session=session)
+        has_rotary_axes = bool(
+            entry.options.get(CONF_HAS_ROTARY_AXES, DEFAULT_HAS_ROTARY_AXES)
+        )
+
+    # Create coordinators.  All four are created for both connection types so
+    # platform code stays unchanged.  On Live the axis/feed/runtime/etc. client
+    # methods raise, so those coordinators simply yield empty/None values (the
+    # axis coordinator never raises UpdateFailed by design).
     fast_coordinator = DatronFastCoordinator(hass, client)
     axis_coordinator = DatronAxisCoordinator(hass, client)
     medium_coordinator = DatronMediumCoordinator(hass, client)
@@ -135,6 +177,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
         COORD_MEDIUM: medium_coordinator,
         COORD_SLOW: slow_coordinator,
         "has_rotary_axes": has_rotary_axes,
+        CONF_CONNECTION_TYPE: connection_type,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

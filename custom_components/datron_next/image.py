@@ -9,9 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from homeassistant.components.image import ImageEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -19,21 +17,15 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .api import DatronApiClient, DatronApiError
-from .const import COORD_MEDIUM, DOMAIN
+from .const import CONF_CONNECTION_TYPE, CONNECTION_LIVE, CONNECTION_NEXT, COORD_MEDIUM, DOMAIN
+from .entity import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _device_info(entry: ConfigEntry) -> DeviceInfo:
+def _device_info(entry: ConfigEntry):
     """Return shared DeviceInfo for all image entities."""
-    return DeviceInfo(
-        identifiers={(DOMAIN, entry.entry_id)},
-        name=entry.title,
-        manufacturer="Datron",
-        model="M8Cube",
-        sw_version="NEXT",
-        configuration_url=f"http://{entry.data[CONF_HOST]}",
-    )
+    return build_device_info(entry)
 
 
 async def async_setup_entry(
@@ -46,16 +38,21 @@ async def async_setup_entry(
     client: DatronApiClient = data["client"]
     medium_coordinator: DataUpdateCoordinator = data[COORD_MEDIUM]
 
-    entities: list[ImageEntity] = [
-        DatronWorkpieceImage(hass=hass, entry=entry, client=client),
-        DatronPreviewImage(hass=hass, entry=entry, client=client),
+    is_live = data.get(CONF_CONNECTION_TYPE, CONNECTION_NEXT) == CONNECTION_LIVE
+
+    entities: list[ImageEntity] = []
+    # Workpiece image has no Datron Live data source.
+    if not is_live:
+        entities.append(DatronWorkpieceImage(hass=hass, entry=entry, client=client))
+    entities.append(DatronPreviewImage(hass=hass, entry=entry, client=client))
+    entities.append(
         DatronToolImage(
             hass=hass,
             entry=entry,
             client=client,
             coordinator=medium_coordinator,
-        ),
-    ]
+        )
+    )
     async_add_entities(entities)
 
 
@@ -121,23 +118,20 @@ class DatronPreviewImage(ImageEntity):
         self._attr_device_info = _device_info(entry)
         self._cached_image: bytes | None = None
 
-    def _make_absolute(self, url: str) -> str:
-        """Ensure a URL is absolute by prepending the machine host if needed."""
-        if url.startswith("http://") or url.startswith("https://"):
-            return url
-        prefix = f"http://{self._client._host}:{self._client._port}"
-        return f"{prefix}{url}" if url.startswith("/") else f"{prefix}/{url}"
-
     async def async_image(self) -> bytes | None:
         """Return the program preview image bytes.
 
         Two-step flow:
           1. GET /Runtime/PreviewImage (bearer auth) → {"url": "/api/v2.0/Image/ProgramPreviewImage?token=..."}
-          2. GET <absolute url> (no auth, token in query string) → JPEG bytes
+          2. GET <url> (no auth, token in query string) → JPEG bytes
 
         The /Image/ProgramPreviewImage endpoint requires a token query param
         (it is a public endpoint) so we never call it without one.
         Returns None / cached image if no program is loaded (API returns 204).
+
+        Relative URLs are passed straight to the client's ``fetch_image_url``,
+        which resolves them against the client's own base URL (http for NEXT,
+        https for Live) — so the same code works for both connection types.
         """
         try:
             # Step 1: get the token-based URL from the runtime endpoint
@@ -158,10 +152,9 @@ class DatronPreviewImage(ImageEntity):
                 _LOGGER.debug("Unexpected preview image URL response: %s", url_info)
                 return self._cached_image
 
-            # Step 2: fetch the image bytes via the absolute public URL
-            abs_url = self._make_absolute(image_url)
-            _LOGGER.debug("Fetching preview image from: %s", abs_url)
-            image_data = await self._client.fetch_image_url(abs_url)
+            # Step 2: fetch the image bytes; the client resolves relative URLs.
+            _LOGGER.debug("Fetching preview image from: %s", image_url)
+            image_data = await self._client.fetch_image_url(image_url)
             if isinstance(image_data, bytes) and len(image_data) > 0:
                 self._cached_image = image_data
                 self._attr_image_last_updated = datetime.now()
@@ -237,24 +230,19 @@ class DatronToolImage(CoordinatorEntity, ImageEntity):
         self.async_write_ha_state()
 
     async def async_image(self) -> bytes | None:
-        """Return the tool image bytes."""
-        def _make_absolute(url: str) -> str:
-            if url.startswith("http://") or url.startswith("https://"):
-                return url
-            host = getattr(self._client, "_host", None)
-            port = getattr(self._client, "_port", 80)
-            if url.startswith("/"):
-                return f"http://{host}:{port}{url}"
-            return f"http://{host}:{port}/{url}"
+        """Return the tool image bytes.
 
+        Relative imageUrls are passed straight to ``fetch_image_url``, which
+        resolves them against the client's base URL (http for NEXT, https for
+        Live).
+        """
         image_url = self._get_image_url()
         if not image_url:
             _LOGGER.debug("No imageUrl in tool spindle data — trying direct fetch")
             return await self._fetch_direct()
 
         try:
-            abs_url = _make_absolute(image_url)
-            image_data = await self._client.fetch_image_url(abs_url)
+            image_data = await self._client.fetch_image_url(image_url)
             if isinstance(image_data, bytes) and len(image_data) > 0:
                 self._cached_image = image_data
                 self._last_image_url = image_url
