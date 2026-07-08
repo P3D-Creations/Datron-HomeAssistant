@@ -62,7 +62,14 @@ _CARD_REGISTERED_KEY = f"{DOMAIN}_card_registered"
 
 
 async def _async_register_frontend_card(hass: HomeAssistant) -> None:
-    """Serve the bundled cockpit card at CARD_URL (once per HA run)."""
+    """Serve the bundled cockpit card and auto-load it into the frontend.
+
+    Registering a static path only *serves* the file — the frontend still has to
+    *load* the module for the custom element to be defined and to appear in the
+    card picker. ``add_extra_js_url`` injects it on every dashboard, so the card
+    works with no manual resource setup. A version query busts the browser cache
+    on integration updates. Runs once per HA start.
+    """
     if hass.data.get(_CARD_REGISTERED_KEY):
         return
     if not os.path.isfile(CARD_PATH):
@@ -77,8 +84,28 @@ async def _async_register_frontend_card(hass: HomeAssistant) -> None:
     except Exception as err:  # noqa: BLE001 — never block setup on the card
         _LOGGER.debug("Could not register cockpit card static path: %s", err)
         return
+
+    # Cache-bust by integration version so updates load fresh.
+    version = ""
+    try:
+        from homeassistant.loader import async_get_integration
+
+        integration = await async_get_integration(hass, DOMAIN)
+        version = str(integration.version or "")
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Could not resolve integration version: %s", err)
+    url = f"{CARD_URL}?v={version}" if version else CARD_URL
+
+    try:
+        from homeassistant.components.frontend import add_extra_js_url
+
+        add_extra_js_url(hass, url)
+    except Exception as err:  # noqa: BLE001 — card is optional, never block setup
+        _LOGGER.debug("Could not auto-load cockpit card JS (%s); a manual "
+                      "Lovelace resource for %s still works", err, CARD_URL)
+
     hass.data[_CARD_REGISTERED_KEY] = True
-    _LOGGER.debug("Cockpit card served at %s", CARD_URL)
+    _LOGGER.debug("Cockpit card served and auto-loaded from %s", url)
 
 # ── Service names ─────────────────────────────────────────────────────────────
 SVC_EXECUTE_PROGRAM = "execute_program_async"
@@ -91,6 +118,7 @@ SVC_EXECUTE_REMOTE_LINK = "execute_remote_link"
 SVC_SET_VARIABLE = "set_variable"
 SVC_GET_VARIABLE = "get_variable"
 SVC_DIAGNOSTICS = "diagnostics"
+SVC_GET_TOOLS = "get_tools"
 
 # ── Service schemas ───────────────────────────────────────────────────────────
 _PATH_SCHEMA = vol.Schema({vol.Required("path"): cv.string})
@@ -115,17 +143,49 @@ _VARIABLE_GET_SCHEMA = vol.Schema(
         vol.Required("type"): vol.In(["bool", "number", "string"]),
     }
 )
+_GET_TOOLS_SCHEMA = vol.Schema(
+    {
+        vol.Required("storage"): vol.In(
+            ["magazine", "warehouse", "program", "spindle"]
+        ),
+        vol.Optional("device_id"): cv.string,
+    }
+)
 
 type DatronConfigEntry = ConfigEntry
 
 
+def _entry_data(hass: HomeAssistant) -> dict[str, Any]:
+    """Return the hass.data dict of the first loaded config entry."""
+    entries = hass.data.get(DOMAIN, {})
+    # Only config-entry values are dicts with a "client"; skip bookkeeping keys.
+    for data in entries.values():
+        if isinstance(data, dict) and "client" in data:
+            return data
+    raise ValueError("No Datron NEXT entry loaded")
+
+
 def _get_client(hass: HomeAssistant) -> DatronApiClient:
     """Return the API client for the first loaded config entry."""
-    entries = hass.data.get(DOMAIN, {})
-    if not entries:
-        raise ValueError("No Datron NEXT entry loaded")
-    first_entry_data = next(iter(entries.values()))
-    return first_entry_data["client"]
+    return _entry_data(hass)["client"]
+
+
+def _client_for_device(hass: HomeAssistant, device_id: str | None) -> DatronApiClient:
+    """Return the client for *device_id*'s entry, or the first entry's client.
+
+    Lets a service target a specific machine when several Datron entries exist;
+    falls back to the first entry (single-machine setups need not pass one).
+    """
+    if device_id:
+        from homeassistant.helpers import device_registry as dr
+
+        device = dr.async_get(hass).async_get(device_id)
+        if device:
+            for entry_id in device.config_entries:
+                data = hass.data.get(DOMAIN, {}).get(entry_id)
+                if isinstance(data, dict) and "client" in data:
+                    return data["client"]
+    return _get_client(hass)
 
 
 def _get_fast_coordinator(hass: HomeAssistant) -> DatronFastCoordinator:
@@ -461,6 +521,39 @@ def _register_services(hass: HomeAssistant) -> None:
         supports_response=SupportsResponse.ONLY,
     )
 
+    async def handle_get_tools(call: ServiceCall) -> dict:
+        """Return the tool list for a storage location (for the card's browser).
+
+        storage: magazine | warehouse | program | spindle. Read-only; returns
+        ``{storage, count, tools: [...]}``. device_id (optional) targets a
+        specific machine when several are configured.
+        """
+        client = _client_for_device(hass, call.data.get("device_id"))
+        storage: str = call.data["storage"]
+        try:
+            if storage == "magazine":
+                tools = await client.get_tools_in_changer()
+            elif storage == "warehouse":
+                tools = await client.get_tools_in_warehouse()
+            elif storage == "program":
+                tools = await client.get_tools_in_program()
+            else:  # spindle
+                spindle = await client.get_tool_in_spindle()
+                tools = [spindle] if isinstance(spindle, dict) else []
+        except DatronApiError as err:
+            _LOGGER.error("get_tools(%s) error: %s", storage, err)
+            raise
+        tool_list = tools if isinstance(tools, list) else []
+        return {"storage": storage, "count": len(tool_list), "tools": tool_list}
+
+    hass.services.async_register(
+        DOMAIN,
+        SVC_GET_TOOLS,
+        handle_get_tools,
+        schema=_GET_TOOLS_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bool:
     """Unload a config entry."""
@@ -480,6 +573,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> b
                 SVC_SET_VARIABLE,
                 SVC_GET_VARIABLE,
                 SVC_DIAGNOSTICS,
+                SVC_GET_TOOLS,
             ):
                 hass.services.async_remove(DOMAIN, svc)
 

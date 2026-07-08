@@ -165,6 +165,35 @@ get_variable:
             - number
             - string
 
+get_tools:
+  name: Get Tools
+  description: >
+    Return the tool list for a storage location (magazine, warehouse, program,
+    or spindle). Read-only; returns {storage, count, tools[]}. Used by the
+    Cockpit card's tool browser; also callable with response_variable in scripts.
+  fields:
+    storage:
+      name: Storage
+      description: Which tool list to return.
+      required: true
+      example: "magazine"
+      selector:
+        select:
+          options:
+            - magazine
+            - warehouse
+            - program
+            - spindle
+    device_id:
+      name: Machine (optional)
+      description: >
+        Target a specific Datron machine when more than one is configured.
+        Omit to use the first configured machine.
+      required: false
+      selector:
+        device:
+          integration: datron_next
+
 confirm_dialog:
   name: Confirm Dialog
   description: >

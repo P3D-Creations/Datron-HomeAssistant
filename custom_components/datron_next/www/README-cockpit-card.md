@@ -35,11 +35,17 @@ Add that URL as a resource of type **JavaScript Module**.
 
 ## Configuration
 
+A **visual editor** is available: when you add the card from the dashboard UI it opens a small
+form where you pick the **machine** (auto-discovered from your Datron Live entities), set an
+optional **title**, and toggle **Show camera** and **Show tool browser**. You can still edit the
+YAML directly:
+
 ```yaml
 type: custom:datron-cockpit-card
 prefix: datron_m8cube_1804685    # REQUIRED — shared entity slug (part after "domain." and before the per-entity suffix)
 title: M8Cube                    # optional — overrides the header title
 show_camera: true                # optional — default true
+show_tools: true                 # optional — default true; enables the tool browser overlay
 ```
 
 The card builds every entity id as `${domain}.${prefix}_${suffix}` (for example
@@ -67,3 +73,16 @@ the entity id, drop the leading `sensor.` and the trailing `_status`. What remai
 - Pause / Resume action buttons (greyed out when unavailable; Resume highlights when paused).
 
 Missing entities are hidden or shown as a dash — the card never throws at render time.
+
+## Tool browser
+
+When `show_tools` is true (the default), the blue **Tool overview** bar and the Magazine /
+Warehouse count figures open a **tool browser overlay**. The overlay has **Magazine ·
+Warehouse · Program** tabs, a search box (matches tool number / name / category / article
+number), and a scrollable list with a category icon, `T{number}`, name, category/description
+and a tool-life / path figure per tool. Data is fetched lazily via the `datron_next.get_tools`
+response service and cached per tab for the session. Set `show_tools: false` to keep the old
+behavior where the bar opens the tool image's more-info dialog instead.
+
+> **Note:** program **files** are *not* browsable on Datron Live (RemoteLink is unlicensed).
+> The **Program** tab shows only the **tools used by the current program**, not a file browser.
