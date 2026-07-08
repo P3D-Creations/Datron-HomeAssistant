@@ -470,24 +470,6 @@ class DatronLiveClient:
             except TimeoutError as err:
                 raise DatronApiError("Timeout fetching image") from err
 
-    async def get_program_preview_image(self) -> bytes | None:
-        """Fetch the program preview image bytes (two-step: url then fetch)."""
-        url_info = await self.get_preview_image_url()
-        if url_info is None:
-            return None
-        image_url: str | None = None
-        if isinstance(url_info, dict):
-            image_url = (
-                url_info.get("url")
-                or url_info.get("imageUrl")
-                or url_info.get("fullName")
-            )
-        elif isinstance(url_info, str) and url_info:
-            image_url = url_info
-        if not image_url:
-            return None
-        return await self.fetch_image_url(image_url)
-
     # ── Camera ───────────────────────────────────────────────
 
     async def get_camera_configuration(self) -> list[dict[str, Any]]:
@@ -500,26 +482,6 @@ class DatronLiveClient:
         if isinstance(result, list):
             return result
         return []
-
-    async def get_camera_stream_url(self, index: int = 0) -> str | None:
-        """Return the MJPEG stream URL for a configured camera.
-
-        The SPA builds the URL as ``http://{host}:{port}{url}`` where *port* and
-        *url* come from the configuration. Scheme is **http** (not https). The
-        configured port (e.g. 44347) differs from the API port. Returns None if
-        no camera is configured.
-        """
-        configs = await self.get_camera_configuration()
-        if not configs or index >= len(configs):
-            return None
-        cfg = configs[index]
-        if not isinstance(cfg, dict):
-            return None
-        url = cfg.get("url")
-        port = cfg.get("port")
-        if not url or port is None:
-            return None
-        return f"http://{self._host}:{port}{url}"
 
     # ── Dialog ───────────────────────────────────────────────
 

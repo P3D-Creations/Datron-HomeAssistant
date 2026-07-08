@@ -56,9 +56,6 @@ LIVE_BUTTON_KEYS = {
 }
 
 
-def _device_info(entry: ConfigEntry):
-    return build_device_info(entry)
-
 
 def _execution_state(fast_data: dict[str, Any] | None) -> str | None:
     if not isinstance(fast_data, dict):
@@ -225,7 +222,7 @@ class DatronRefreshButton(ButtonEntity):
     def __init__(self, entry: ConfigEntry, coordinators: dict[str, Any]) -> None:
         self._coordinators = coordinators
         self._attr_unique_id = f"{entry.entry_id}_refresh_data"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
 
     async def async_press(self) -> None:
         """Refresh all coordinators in parallel."""
@@ -278,7 +275,7 @@ class DatronStateGatedActionButton(CoordinatorEntity, ButtonEntity):
         self._attr_icon = icon
         if device_class is not None:
             self._attr_device_class = device_class
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
 
     @property
     def available(self) -> bool:
@@ -327,7 +324,7 @@ class DatronReloadProgramButton(CoordinatorEntity, ButtonEntity):
         self._slow_coordinator = slow_coordinator
         self._fast_coordinator = fast_coordinator
         self._attr_unique_id = f"{entry.entry_id}_reload_program"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
 
     def _match_via_enumeration(
         self, filename: str, directory_hint: str
@@ -466,7 +463,7 @@ class DatronSelectedProgramActionButton(ButtonEntity):
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
         self._attr_icon = icon
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
 
     @property
     def available(self) -> bool:
@@ -524,7 +521,7 @@ class DatronDynamicDialogButton(CoordinatorEntity, ButtonEntity):
         # Stable fallback name → stable entity_id (…_dialog_button_N). The
         # ``name`` property below overrides the *displayed* label live.
         self._attr_name = f"Dialog Button {index + 1}"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
 
     def _open_dialog(self) -> dict[str, Any] | None:
         coord_data: dict[str, Any] = self.coordinator.data or {}
@@ -618,7 +615,7 @@ class DatronDialogLabelButton(CoordinatorEntity, ButtonEntity):
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
         self._attr_icon = icon
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
 
     def _open_dialog(self) -> dict[str, Any] | None:
         coord_data: dict[str, Any] = self.coordinator.data or {}

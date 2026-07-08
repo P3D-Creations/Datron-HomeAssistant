@@ -23,10 +23,6 @@ from .entity import build_device_info
 _LOGGER = logging.getLogger(__name__)
 
 
-def _device_info(entry: ConfigEntry):
-    """Return shared DeviceInfo for all image entities."""
-    return build_device_info(entry)
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -75,7 +71,7 @@ class DatronWorkpieceImage(ImageEntity):
         super().__init__(hass)
         self._client = client
         self._attr_unique_id = f"{entry.entry_id}_workpiece_image"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
         self._cached_image: bytes | None = None
 
     async def async_image(self) -> bytes | None:
@@ -115,7 +111,7 @@ class DatronPreviewImage(ImageEntity):
         super().__init__(hass)
         self._client = client
         self._attr_unique_id = f"{entry.entry_id}_preview_image"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
         self._cached_image: bytes | None = None
 
     async def async_image(self) -> bytes | None:
@@ -193,7 +189,7 @@ class DatronToolImage(CoordinatorEntity, ImageEntity):
         self._client = client
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_tool_spindle_image"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
         self._cached_image: bytes | None = None
         self._last_image_url: str | None = None
 

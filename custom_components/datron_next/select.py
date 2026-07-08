@@ -27,9 +27,6 @@ from .entity import build_device_info
 _LOGGER = logging.getLogger(__name__)
 
 
-def _device_info(entry: ConfigEntry):
-    return build_device_info(entry)
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -67,7 +64,7 @@ class DatronProgramSelect(CoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self._selection_state = selection_state
         self._attr_unique_id = f"{entry.entry_id}_selected_program"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = build_device_info(entry)
 
     def _programs(self) -> list[dict[str, str]]:
         data = self.coordinator.data or {}
