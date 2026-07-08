@@ -623,21 +623,30 @@ class DatronLiveClient:
     def _not_available(name: str) -> DatronApiError:
         return DatronApiError(f"{name} not available on Datron Live")
 
-    # -- polled by coordinators → return empty (no per-poll log spam) --
+    # -- available on Live (verified) --
+
+    async def get_feed_override(self) -> dict[str, Any]:
+        """Feed override dial positions — available on Live.
+
+        Returns ``{"cuttingOverride": int, "positioningOverride": int}``.
+        """
+        return await self._get("/api/MachineComponents/FeedOverride")
+
+    async def get_runtime(self) -> dict[str, Any]:
+        """Spindle / machine runtime hours — available on Live.
+
+        Returns ``{"spindleRuntimeHours": float, "machineRuntimeHours": float}``.
+        """
+        return await self._get("/api/MachineComponents/Runtime")
+
+    # -- polled by coordinators but NOT available on Live → return empty so the
+    #    poll stays quiet (the consuming entities are not created for Live) --
 
     async def get_axis_positions_direct(self) -> dict[str, Any]:
-        """Not available on Datron Live — empty so the axis poll stays quiet."""
+        """Not available on Datron Live (endpoint hangs) — empty keeps axis quiet."""
         return {}
 
     async def get_axis_positions(self) -> dict[str, Any]:
-        """Not available on Datron Live."""
-        return {}
-
-    async def get_feed_override(self) -> dict[str, Any]:
-        """Not available on Datron Live — empty so the fast poll stays quiet."""
-        return {}
-
-    async def get_runtime(self) -> dict[str, Any]:
         """Not available on Datron Live."""
         return {}
 

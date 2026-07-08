@@ -57,9 +57,46 @@ This integration connects Home Assistant to a Datron M8Cube (or compatible) CNC 
 
 ## Configuration
 
-You will need:
+When you add the integration you choose a **connection type**:
+
+### Datron NEXT (API token)
 - **Host** — IP address or hostname of your Datron NEXT machine
 - **Bearer Token** — API authentication token (obtained from the DATRON NEXT control)
+
+### Datron Live (username / password)
+Talks to the machine's built-in **DATRON Live** Cockpit web UI backend (`https://<host>/`)
+instead of the NEXT Automation API. You provide:
+- **Host** — IP address or hostname of the machine
+- **Username / Password** — your DATRON Live login. The integration logs in in the background,
+  captures the JWT, and **re-authenticates automatically** when the token expires (no manual
+  token handling).
+
+Datron Live mirrors the same entities as NEXT wherever the data exists — status, job timing,
+compressed air / vacuum / spray, status light, notifications, open dialog, current program,
+tools (spindle / magazine / warehouse), feed override, runtime hours, program preview and tool
+images, and an MJPEG **camera**. Data NEXT exposes but Live does not (axis positions, workpiece,
+SimPL program browser, software version) is automatically omitted for Live entries, and optional
+sensors with no data on your machine (e.g. a 2nd Microjet tank, EKD) are hidden to keep the
+device page clean. Program start/select and SimPL/variable services are NEXT-only.
+
+## Cockpit Card
+
+A custom Lovelace card reproduces the DATRON Live Cockpit layout — one card, no per-entity
+wiring. The integration **serves the card for you**, so you only add a resource once:
+
+1. Settings → Dashboards → ⋮ → **Resources** → **Add resource**
+2. URL `/datron_next/datron-cockpit-card.js`, type **JavaScript Module**
+3. Add the card to a dashboard:
+
+```yaml
+type: custom:datron-cockpit-card
+prefix: datron_m8cube_1804685   # the shared entity slug (before each per-entity suffix)
+title: M8Cube                   # optional
+```
+
+The dialog panel renders the machine's actual buttons (e.g. *Unlock door / Continue / Cancel*)
+as one-click actions. See [`custom_components/datron_next/www/README-cockpit-card.md`](custom_components/datron_next/www/README-cockpit-card.md)
+for details and the `config/www/` alternative.
 
 ## Polling Intervals
 

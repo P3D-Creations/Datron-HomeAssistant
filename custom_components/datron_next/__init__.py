@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import voluptuous as vol
 
@@ -51,6 +52,33 @@ PLATFORMS: list[Platform] = [
     Platform.CAMERA,
     Platform.SELECT,
 ]
+
+# ── Bundled Lovelace card ─────────────────────────────────────────────────────
+# The integration serves the cockpit card at a stable URL so users only add a
+# single Lovelace resource (module) instead of copying files into config/www.
+CARD_URL = "/datron_next/datron-cockpit-card.js"
+CARD_PATH = os.path.join(os.path.dirname(__file__), "www", "datron-cockpit-card.js")
+_CARD_REGISTERED_KEY = f"{DOMAIN}_card_registered"
+
+
+async def _async_register_frontend_card(hass: HomeAssistant) -> None:
+    """Serve the bundled cockpit card at CARD_URL (once per HA run)."""
+    if hass.data.get(_CARD_REGISTERED_KEY):
+        return
+    if not os.path.isfile(CARD_PATH):
+        _LOGGER.debug("Cockpit card file not found at %s; skipping", CARD_PATH)
+        return
+    try:
+        from homeassistant.components.http import StaticPathConfig
+
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(CARD_URL, CARD_PATH, False)]
+        )
+    except Exception as err:  # noqa: BLE001 — never block setup on the card
+        _LOGGER.debug("Could not register cockpit card static path: %s", err)
+        return
+    hass.data[_CARD_REGISTERED_KEY] = True
+    _LOGGER.debug("Cockpit card served at %s", CARD_URL)
 
 # ── Service names ─────────────────────────────────────────────────────────────
 SVC_EXECUTE_PROGRAM = "execute_program_async"
@@ -181,6 +209,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Serve the bundled cockpit Lovelace card (best-effort, never blocks setup).
+    await _async_register_frontend_card(hass)
 
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 

@@ -16,8 +16,37 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import COORD_FAST, DOMAIN
+from .const import (
+    CONF_CONNECTION_TYPE,
+    CONNECTION_LIVE,
+    CONNECTION_NEXT,
+    COORD_FAST,
+    DOMAIN,
+)
 from .entity import build_device_info
+
+# Binary sensors backed by an optional hardware field. On Datron Live the
+# digital compressed-air / vacuum sensors are structurally absent, and a given
+# machine may lack an EKD tank or a 2nd Microjet tank — those fields come back
+# null. For Live entries we skip a sensor when its source field is null in the
+# initial poll so the device page and history stay clean. Any Live machine that
+# DOES have the hardware reports a non-null field and keeps the sensor.
+_LIVE_OPTIONAL_BINARY_FIELDS: dict[str, tuple[str, ...]] = {
+    "compressed_air_input_ok": ("compressed_air", "digitalSensorForCompressedAirInput"),
+    "vacuum_sensor": ("vacuum", "digitalSensor"),
+    "ekd_tank_empty": ("spray_system", "datronEkd"),
+    "microjet_tank2_empty": ("spray_system", "microjet", "tank2IsEmpty"),
+}
+
+
+def _field_present(data: dict[str, Any] | None, path: tuple[str, ...]) -> bool:
+    """Return True if the nested field at *path* is present and non-null."""
+    current: Any = data or {}
+    for key in path:
+        if not isinstance(current, dict):
+            return False
+        current = current.get(key)
+    return current is not None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -145,6 +174,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up Datron NEXT binary sensors from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
+    is_live = data.get(CONF_CONNECTION_TYPE, CONNECTION_NEXT) == CONNECTION_LIVE
+    fast_data = data[COORD_FAST].data if data.get(COORD_FAST) else None
+
+    def _include(desc: DatronBinarySensorEntityDescription) -> bool:
+        # For Live, drop optional-hardware sensors whose source field is null
+        # (keeps the device page clean); NEXT is unaffected.
+        if is_live and desc.key in _LIVE_OPTIONAL_BINARY_FIELDS:
+            return _field_present(fast_data, _LIVE_OPTIONAL_BINARY_FIELDS[desc.key])
+        return True
 
     entities = [
         DatronBinarySensor(
@@ -153,6 +191,7 @@ async def async_setup_entry(
             entry=entry,
         )
         for desc in BINARY_SENSORS
+        if _include(desc)
     ]
     async_add_entities(entities)
 

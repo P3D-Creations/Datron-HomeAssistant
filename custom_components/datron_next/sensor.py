@@ -36,6 +36,9 @@ from .execution_sensor import (
 )
 
 # Sensor keys with no Datron Live data source — dropped for Live entries.
+# Sensor keys with no Datron Live data source (verified against the machine):
+# axis positions hang, and NextSoftwareVersion is 403 on Live. FeedOverride and
+# Runtime (spindle/machine hours) ARE available on Live, so they stay enabled.
 LIVE_UNSUPPORTED_SENSOR_KEYS = {
     "axis_x",
     "axis_y",
@@ -43,10 +46,6 @@ LIVE_UNSUPPORTED_SENSOR_KEYS = {
     "axis_a",
     "axis_b",
     "axis_c",
-    "feed_override_cutting",
-    "feed_override_positioning",
-    "spindle_runtime",
-    "machine_runtime",
     "software_version",
 }
 
