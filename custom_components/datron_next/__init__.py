@@ -107,6 +107,64 @@ async def _async_register_frontend_card(hass: HomeAssistant) -> None:
     hass.data[_CARD_REGISTERED_KEY] = True
     _LOGGER.debug("Cockpit card served and auto-loaded from %s", url)
 
+
+_TOOL_IMAGE_VIEW_KEY = f"{DOMAIN}_tool_image_view"
+
+
+def _register_tool_image_view(hass: HomeAssistant) -> None:
+    """Register the tool-image proxy view (once per HA run).
+
+    The machine renders per-tool thumbnails at
+    ``/api/v1.0/Image/Tool?token=<jwt>``, but that URL is relative to the
+    MACHINE, so the HA frontend cannot load it directly (wrong host,
+    self-signed cert). This view proxies the bytes through HA:
+
+        GET /api/datron_next/tool_image?token=<jwt>&w=200&h=400
+
+    ``requires_auth`` is False because <img> tags cannot send auth headers;
+    the machine-signed, expiring token in the query is the capability — the
+    view returns nothing without a valid one.
+    """
+    if hass.data.get(_TOOL_IMAGE_VIEW_KEY):
+        return
+
+    from homeassistant.components.http import HomeAssistantView
+
+    class DatronToolImageView(HomeAssistantView):
+        url = "/api/datron_next/tool_image"
+        name = "api:datron_next:tool_image"
+        requires_auth = False
+
+        async def get(self, request):  # type: ignore[override]
+            from aiohttp import web
+
+            token = request.query.get("token")
+            if not token:
+                return web.Response(status=400, text="missing token")
+            try:
+                width = int(request.query.get("w", 200))
+                height = int(request.query.get("h", 400))
+            except ValueError:
+                return web.Response(status=400, text="bad size")
+            try:
+                client = _get_client(hass)
+                data = await client.get_tool_image(
+                    token=token, width=width, height=height
+                )
+            except (DatronApiError, ValueError) as err:
+                _LOGGER.debug("tool_image proxy failed: %s", err)
+                return web.Response(status=502, text="upstream error")
+            if not isinstance(data, (bytes, bytearray)) or not data:
+                return web.Response(status=404, text="no image")
+            return web.Response(
+                body=bytes(data),
+                content_type="image/png",
+                headers={"Cache-Control": "private, max-age=300"},
+            )
+
+    hass.http.register_view(DatronToolImageView())
+    hass.data[_TOOL_IMAGE_VIEW_KEY] = True
+
 # ── Service names ─────────────────────────────────────────────────────────────
 SVC_EXECUTE_PROGRAM = "execute_program_async"
 SVC_LOAD_PROGRAM = "load_program"
@@ -278,6 +336,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DatronConfigEntry) -> bo
 
     # Serve the bundled cockpit Lovelace card (best-effort, never blocks setup).
     await _async_register_frontend_card(hass)
+    _register_tool_image_view(hass)
 
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 

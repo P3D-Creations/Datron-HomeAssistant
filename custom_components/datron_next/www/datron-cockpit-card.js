@@ -6,7 +6,7 @@
  * No build step, no external dependencies. Loaded by HA as an ES module.
  */
 
-const CARD_VERSION = "1.6.0";
+const CARD_VERSION = "1.7.0";
 
 console.info(
   "%c DATRON-COCKPIT-CARD %c v" + CARD_VERSION + " ",
@@ -145,7 +145,7 @@ class DatronCockpitCard extends HTMLElement {
       );
     }
     this._config = Object.assign(
-      { show_camera: true, show_tools: true, title: null },
+      { show_camera: true, show_tools: true, title: null, timer_source: "machine" },
       config
     );
     this._built = false;
@@ -153,9 +153,63 @@ class DatronCockpitCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
     if (!this._config) return;
+    // HA pushes a new hass object on ANY state change in the whole instance.
+    // Re-rendering #content then replaces the DOM between mousedown/mouseup
+    // and eats clicks. Skip the render when none of the entities THIS card
+    // reads have changed (HA state objects are immutable and replaced on
+    // change, so reference identity is a reliable change check).
+    if (this._built && prev && !this._relevantChanged(prev, hass)) return;
     this._render();
+  }
+
+  // Entity ids this card reads; used for the render-skip signature.
+  _watchedIds() {
+    const p = this._config.prefix;
+    const ids = [
+      "sensor." + p + "_machine_type",
+      "sensor." + p + "_machine_number",
+      "sensor." + p + "_latest_notification",
+      "sensor." + p + "_open_dialog",
+      "sensor." + p + "_current_program",
+      "sensor." + p + "_job_elapsed_time",
+      "sensor." + p + "_job_remaining_time",
+      "sensor." + p + "_estimated_remaining_time",
+      "sensor." + p + "_job_progress",
+      "sensor." + p + "_vacuum_pressure",
+      "sensor." + p + "_compressed_air_input_pressure",
+      "sensor." + p + "_tool_in_spindle",
+      "sensor." + p + "_tools_in_magazine",
+      "sensor." + p + "_tools_in_warehouse",
+      "sensor." + p + "_program_tools_missing",
+      "sensor." + p + "_status",
+      "binary_sensor." + p + "_vacuum_active",
+      "binary_sensor." + p + "_microjet_tank1_empty",
+      "image." + p + "_program_preview_image",
+      "image." + p + "_tool_in_spindle_image",
+      "button." + p + "_pause_program",
+      "button." + p + "_resume_program",
+      "camera." + p + "_machine_camera",
+    ];
+    const extra = Array.isArray(this._config.extra_cameras)
+      ? this._config.extra_cameras
+      : [];
+    for (let i = 0; i < extra.length; i++) {
+      if (extra[i]) ids.push(extra[i]);
+    }
+    return ids;
+  }
+
+  _relevantChanged(prevHass, hass) {
+    const ps = (prevHass && prevHass.states) || {};
+    const ns = (hass && hass.states) || {};
+    const ids = this._watchedIds();
+    for (let i = 0; i < ids.length; i++) {
+      if (ps[ids[i]] !== ns[ids[i]]) return true;
+    }
+    return false;
   }
 
   getCardSize() {
@@ -224,6 +278,44 @@ class DatronCockpitCard extends HTMLElement {
   _fmtPressure(v) {
     const n = this._num(v);
     return n === null ? "--" : n.toFixed(2);
+  }
+
+  // Program-tool availability from `sensor.${prefix}_program_tools_missing`.
+  // Returns { count, missMag, missAll, byId, byArt }; zeroed when missing.
+  _programToolStatus() {
+    const out = { count: 0, missMag: 0, missAll: 0, byId: {}, byArt: {} };
+    const s = this._st(this._eid("sensor", "program_tools_missing"));
+    if (!s) return out;
+    const n = this._num(s.state);
+    if (n !== null) out.count = n;
+    const a = s.attributes || {};
+    out.missMag = this._num(a.missing_magazine) || 0;
+    out.missAll = this._num(a.missing_everywhere) || 0;
+    const tools = Array.isArray(a.tools) ? a.tools : [];
+    for (let i = 0; i < tools.length; i++) {
+      const t = tools[i];
+      if (!t || typeof t !== "object") continue;
+      const st = t.status || "ok";
+      if (t.tool_id !== null && t.tool_id !== undefined) out.byId[t.tool_id] = st;
+      if (t.article_number !== null && t.article_number !== undefined)
+        out.byArt[t.article_number] = st;
+    }
+    return out;
+  }
+
+  // Availability status ("ok" | "missing_magazine" | "missing_everywhere")
+  // for a tool object from the browser, matched by toolId then articleNumber.
+  _availStatusFor(t, pts) {
+    if (!t || !pts) return "ok";
+    if (t.toolId !== null && t.toolId !== undefined && pts.byId[t.toolId])
+      return pts.byId[t.toolId];
+    if (
+      t.articleNumber !== null &&
+      t.articleNumber !== undefined &&
+      pts.byArt[t.articleNumber]
+    )
+      return pts.byArt[t.articleNumber];
+    return "ok";
   }
 
   // ---- i18n / geometry helpers ----------------------------------------
@@ -684,11 +776,36 @@ class DatronCockpitCard extends HTMLElement {
     const s = this._st(this._eid("sensor", "current_program"));
     const name = s && this._valid(s.state) ? s.state : "No program loaded";
     const elapsed = this._state("sensor", "job_elapsed_time");
-    let remaining = this._state("sensor", "job_remaining_time");
-    if (!this._valid(remaining))
-      remaining = this._state("sensor", "estimated_remaining_time");
+    const machineRem = this._state("sensor", "job_remaining_time");
+    const estRem = this._state("sensor", "estimated_remaining_time");
     const progress = this._num(this._state("sensor", "job_progress"));
+    const status = this._state("sensor", "status");
     const preview = this._entityPicture("image", "program_preview_image");
+
+    // Remaining-time source: "machine" (default) | "estimated" | "both".
+    const src = this._config.timer_source || "machine";
+    let remHtml = "";
+    if (src === "estimated") {
+      remHtml =
+        '<span class="tval">' +
+        this._esc(this._valid(estRem) ? estRem : "--:--:--") +
+        "</span>";
+    } else {
+      // machine (with the existing fallback to estimated when missing)
+      let rem = machineRem;
+      if (!this._valid(rem)) rem = estRem;
+      remHtml =
+        '<span class="tval">' +
+        this._esc(this._valid(rem) ? rem : "--:--:--") +
+        "</span>";
+      if (src === "both" && this._valid(estRem)) {
+        remHtml +=
+          '<span class="est-line"><span class="est-badge">EST</span>' +
+          '<span class="est-val">' +
+          this._esc(estRem) +
+          "</span></span>";
+      }
+    }
 
     let previewHtml = "";
     if (preview) {
@@ -700,10 +817,16 @@ class DatronCockpitCard extends HTMLElement {
         '"/>';
     }
 
-    let barHtml = "";
-    if (progress != null) {
-      const pct = Math.max(0, Math.min(100, progress));
-      barHtml = '<div class="prog-underline" style="width:' + pct + '%"></div>';
+    // Progress fill: while Running and < 100 %, the green area is a fill bar
+    // over a dark base; otherwise (idle / done / no progress) fully green.
+    let fillPct = 100;
+    if (
+      status === "Running" &&
+      progress != null &&
+      isFinite(progress) &&
+      progress < 100
+    ) {
+      fillPct = Math.max(0, Math.min(100, progress));
     }
 
     return (
@@ -712,6 +835,9 @@ class DatronCockpitCard extends HTMLElement {
       this._esc(name) +
       "</div>" +
       '<div class="prog-inner">' +
+      '<div class="prog-fill" style="width:' +
+      fillPct +
+      '%"></div>' +
       previewHtml +
       '<div class="prog-time left">' +
       '<span class="ti">' +
@@ -722,11 +848,8 @@ class DatronCockpitCard extends HTMLElement {
       "</span>" +
       "</div>" +
       '<div class="prog-time right">' +
-      '<span class="tval">' +
-      this._esc(this._valid(remaining) ? remaining : "--:--:--") +
-      "</span>" +
+      remHtml +
       "</div>" +
-      barHtml +
       "</div>" +
       "</div>"
     );
@@ -888,6 +1011,27 @@ class DatronCockpitCard extends HTMLElement {
           : "");
     }
 
+    // Program-tool availability badge (circled !): red when any program tool
+    // is in neither magazine nor warehouse, else yellow. Opens the Program tab.
+    let badge = "";
+    const pts = this._programToolStatus();
+    if (pts.count > 0) {
+      const color = pts.missAll > 0 ? SEV_ERROR : SEV_WARN;
+      const title =
+        pts.count +
+        " program tool" +
+        (pts.count === 1 ? "" : "s") +
+        " not in magazine";
+      badge =
+        '<span class="ts-badge" style="background:' +
+        color +
+        '" title="' +
+        this._esc(title) +
+        '"' +
+        (tappable ? ' data-action="open-tools" data-arg="program"' : "") +
+        ">!</span>";
+    }
+
     // The tool icon + spec area opens the full detail popup (same view as a
     // tool-browser row). The magazine/warehouse chips keep their own actions.
     const clickable = tappable && !empty;
@@ -900,6 +1044,7 @@ class DatronCockpitCard extends HTMLElement {
       ">" +
       '<span class="ts-icon">' +
       this._toolIcon(cat) +
+      badge +
       "</span>" +
       '<span class="ts-info">' +
       infoHtml +
@@ -1156,7 +1301,8 @@ class DatronCockpitCard extends HTMLElement {
     this._ovTab = storage;
     this._ovDetailTool = null;
     this._renderOverlayShell();
-    if (this._toolStatus[storage] === "ok") {
+    // The spindle tool changes frequently — always refetch that tab.
+    if (storage !== "spindle" && this._toolStatus[storage] === "ok") {
       this._renderOverlayList();
     } else {
       this._fetchTools(storage);
@@ -1199,9 +1345,10 @@ class DatronCockpitCard extends HTMLElement {
   _renderOverlayShell() {
     if (!this._ovEl) return;
     const tabs = [
+      ["spindle", "Spindle"],
+      ["program", "Program"],
       ["magazine", "Magazine"],
       ["warehouse", "Warehouse"],
-      ["program", "Program"],
     ];
     let tabHtml = "";
     for (let i = 0; i < tabs.length; i++) {
@@ -1229,6 +1376,7 @@ class DatronCockpitCard extends HTMLElement {
       '<div class="ov-tabs">' +
       tabHtml +
       "</div>" +
+      '<div id="ov-legend"></div>' +
       '<div class="ov-searchwrap">' +
       '<input class="ov-search" type="text" data-action="ov-search"' +
       ' placeholder="Search name, category, ⌀, article…"' +
@@ -1268,11 +1416,31 @@ class DatronCockpitCard extends HTMLElement {
       countEl.textContent = n + (n === 1 ? " tool" : " tools");
     }
 
+    // Availability legend + row coloring only apply to the Program tab.
+    const pts = storage === "program" ? this._programToolStatus() : null;
+    const legend = this._ovEl.querySelector("#ov-legend");
+    if (legend) {
+      if (pts && (pts.missMag > 0 || pts.missAll > 0)) {
+        legend.innerHTML =
+          '<div class="ov-legendline">' +
+          '<span class="lg-dot" style="background:' +
+          SEV_WARN +
+          '"></span> not in magazine' +
+          ' <span class="lg-sep">·</span> ' +
+          '<span class="lg-dot" style="background:' +
+          SEV_ERROR +
+          '"></span> not in machine' +
+          "</div>";
+      } else {
+        legend.innerHTML = "";
+      }
+    }
+
     if (!all.length) {
-      list.innerHTML =
-        '<div class="ov-msg">' +
-        (storage === "program" ? "No program tools" : "No tools") +
-        "</div>";
+      let emptyMsg = "No tools";
+      if (storage === "program") emptyMsg = "No program tools";
+      else if (storage === "spindle") emptyMsg = "No tool in spindle";
+      list.innerHTML = '<div class="ov-msg">' + emptyMsg + "</div>";
       return;
     }
     if (!tools.length) {
@@ -1283,7 +1451,7 @@ class DatronCockpitCard extends HTMLElement {
     let rows = "";
     for (let i = 0; i < tools.length; i++) {
       const idx = all.indexOf(tools[i]);
-      rows += this._toolRow(tools[i], idx, storage);
+      rows += this._toolRow(tools[i], idx, storage, pts);
     }
     list.innerHTML = rows;
   }
@@ -1354,7 +1522,8 @@ class DatronCockpitCard extends HTMLElement {
   }
 
   // Spec-first row: characteristics up top, translated name + article below.
-  _toolRow(t, idx, storage) {
+  // `pts` (program-tool status, Program tab only) tints unavailable tools.
+  _toolRow(t, idx, storage, pts) {
     const cat = this._valid(t.category) ? t.category : "";
     const pieces = this._toolSpecPieces(t);
     const catLabel = this._translateCategory(cat);
@@ -1366,8 +1535,17 @@ class DatronCockpitCard extends HTMLElement {
       : "Unnamed tool";
     const art = this._valid(t.articleNumber) ? t.articleNumber : "";
 
+    let availCls = "";
+    if (pts) {
+      const st = this._availStatusFor(t, pts);
+      if (st === "missing_magazine") availCls = " miss-mag";
+      else if (st === "missing_everywhere") availCls = " miss-all";
+    }
+
     return (
-      '<div class="ov-row" data-action="ov-tool" data-arg="' +
+      '<div class="ov-row' +
+      availCls +
+      '" data-action="ov-tool" data-arg="' +
       this._esc(storage + ":" + idx) +
       '">' +
       '<span class="ov-ic">' +
@@ -1493,6 +1671,28 @@ class DatronCockpitCard extends HTMLElement {
     );
   }
 
+  // HA-proxied machine thumbnail URL for a tool, or null. The tool's own
+  // imageUrl points at the machine host (unreachable from the browser); the
+  // integration proxies it via /api/datron_next/tool_image using its token.
+  _toolImageUrl(t) {
+    try {
+      const u = t && t.imageUrl;
+      if (!u || typeof u !== "string") return null;
+      const qi = u.indexOf("?");
+      if (qi === -1) return null;
+      const params = new URLSearchParams(u.slice(qi + 1));
+      const tok = params.get("token");
+      if (!tok) return null;
+      return (
+        "/api/datron_next/tool_image?token=" +
+        encodeURIComponent(tok) +
+        "&w=200&h=400"
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
   _renderDetail(t) {
     if (!this._ovEl) return;
     const cat = this._valid(t.category) ? t.category : "";
@@ -1540,6 +1740,7 @@ class DatronCockpitCard extends HTMLElement {
       '<div class="det-hero">' +
       '<span class="det-ic">' +
       this._toolIcon(cat) +
+      '<img class="det-thumb" alt=""/>' +
       "</span>" +
       '<div class="det-herometa">' +
       (catLabel ? '<div class="det-cat">' + this._esc(catLabel) + "</div>" : "") +
@@ -1556,6 +1757,24 @@ class DatronCockpitCard extends HTMLElement {
         : "") +
       "</div>" +
       "</div>";
+
+    // Machine thumbnail: category icon is the instant placeholder; swap the
+    // proxied image in when it loads, keep the icon on error.
+    const thumbUrl = this._toolImageUrl(t);
+    const thumbEl = this._ovEl.querySelector(".det-thumb");
+    if (thumbEl) {
+      if (thumbUrl) {
+        thumbEl.addEventListener("load", function () {
+          thumbEl.classList.add("show");
+        });
+        thumbEl.addEventListener("error", function () {
+          thumbEl.remove();
+        });
+        thumbEl.src = thumbUrl;
+      } else {
+        thumbEl.remove();
+      }
+    }
   }
 
   _toolIcon(category) {
@@ -1764,7 +1983,11 @@ class DatronCockpitCard extends HTMLElement {
       }
       .prog-inner {
         position:relative; height:170px; border-radius:3px;
-        background:${GREEN}; overflow:hidden;
+        background:#3a3a3a; overflow:hidden;
+      }
+      .prog-fill {
+        position:absolute; top:0; bottom:0; left:0;
+        background:${GREEN}; transition:width 1s linear;
       }
       .prog-preview {
         position:absolute; top:10px; right:12px; bottom:34px;
@@ -1773,15 +1996,22 @@ class DatronCockpitCard extends HTMLElement {
       }
       .prog-time { position:absolute; bottom:12px; display:flex; align-items:center; gap:8px; color:#fff; }
       .prog-time.left { left:14px; }
-      .prog-time.right { right:14px; }
+      .prog-time.right { right:14px; flex-direction:column; align-items:flex-end; gap:2px; }
       .prog-time .ti { display:inline-flex; color:#fff; }
       .prog-time .tval {
         font-size:22px; font-weight:300; color:#fff;
         font-variant-numeric:tabular-nums; letter-spacing:.5px;
+        text-shadow:0 1px 2px rgba(0,0,0,.35);
       }
-      .prog-underline {
-        position:absolute; left:0; bottom:0; height:2px;
-        background:rgba(255,255,255,.85); transition:width .4s ease;
+      .est-line { display:flex; align-items:center; gap:6px; }
+      .est-badge {
+        font-size:9px; font-weight:600; letter-spacing:.6px; color:#fff;
+        background:rgba(0,0,0,.35); border-radius:2px; padding:1px 4px;
+      }
+      .est-val {
+        font-size:14px; font-weight:300; color:rgba(255,255,255,.92);
+        font-variant-numeric:tabular-nums; letter-spacing:.4px;
+        text-shadow:0 1px 2px rgba(0,0,0,.35);
       }
 
       /* Value / consumable bars */
@@ -1806,7 +2036,14 @@ class DatronCockpitCard extends HTMLElement {
       }
       .ts-main.tap { cursor:pointer; transition:background .12s; }
       .ts-main.tap:hover { background:rgba(255,255,255,.08); }
-      .ts-icon { display:inline-flex; color:#dcdcdc; flex-shrink:0; }
+      .ts-icon { display:inline-flex; color:#dcdcdc; flex-shrink:0; position:relative; }
+      .ts-badge {
+        position:absolute; top:-7px; right:-9px;
+        width:16px; height:16px; border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-size:11px; font-weight:700; color:#fff; line-height:1;
+        cursor:pointer; box-shadow:0 0 0 2px #4a4a4a;
+      }
       .ts-info { display:flex; flex-direction:column; gap:2px; min-width:0; }
       .ts-spec {
         font-size:14px; font-weight:500; color:#fff; letter-spacing:.2px;
@@ -1925,11 +2162,31 @@ class DatronCockpitCard extends HTMLElement {
         display:flex; flex-direction:column; gap:2px;
       }
       .ov-msg { padding:22px 8px; text-align:center; color:#9a9a9a; font-size:14px; }
+      .ov-legendline {
+        display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+        padding:0 14px 8px; font-size:11.5px; color:#b5b5b5; letter-spacing:.2px;
+      }
+      .lg-dot {
+        display:inline-block; width:9px; height:9px; border-radius:50%;
+        flex-shrink:0;
+      }
+      .lg-sep { color:#6f6f6f; }
       .ov-row {
         display:flex; align-items:center; gap:12px; cursor:pointer;
         padding:9px 8px; border-radius:4px;
+        border-left:3px solid transparent;
       }
       .ov-row:hover { background:#363636; }
+      .ov-row.miss-mag {
+        border-left-color:${SEV_WARN};
+        background:rgba(247,147,30,.09);
+      }
+      .ov-row.miss-mag:hover { background:rgba(247,147,30,.16); }
+      .ov-row.miss-all {
+        border-left-color:${SEV_ERROR};
+        background:rgba(200,0,0,.10);
+      }
+      .ov-row.miss-all:hover { background:rgba(200,0,0,.18); }
       .ov-ic {
         display:inline-flex; align-items:center; justify-content:center;
         flex-shrink:0; width:34px; height:34px; border-radius:4px;
@@ -1971,10 +2228,16 @@ class DatronCockpitCard extends HTMLElement {
       }
       .det-ic {
         display:inline-flex; align-items:center; justify-content:center;
-        width:72px; height:72px; border-radius:8px; flex-shrink:0;
-        background:#3a3a3a; color:${GREEN};
+        width:80px; height:120px; border-radius:8px; flex-shrink:0;
+        background:#3a3a3a; color:${GREEN}; position:relative; overflow:hidden;
       }
       .det-ic svg { width:52px; height:52px; }
+      .det-thumb {
+        position:absolute; inset:0; width:100%; height:100%;
+        object-fit:contain; background:#3a3a3a;
+        opacity:0; transition:opacity .2s ease;
+      }
+      .det-thumb.show { opacity:1; }
       .det-herometa { display:flex; flex-direction:column; gap:8px; min-width:0; }
       .det-cat { font-size:15px; font-weight:500; color:#ececec; }
       .det-spec { font-size:12.5px; color:#bdbdbd; letter-spacing:.2px; }
@@ -2083,6 +2346,12 @@ class DatronCockpitCardEditor extends HTMLElement {
       '<select id="ed-prefix" class="ctl"></select></label>' +
       '<label class="row"><span class="lbl">Title</span>' +
       '<input id="ed-title" class="ctl" type="text" placeholder="Optional header title"/></label>' +
+      '<label class="row"><span class="lbl">Remaining time source</span>' +
+      '<select id="ed-timer" class="ctl">' +
+      '<option value="machine">Machine</option>' +
+      '<option value="estimated">Estimated</option>' +
+      '<option value="both">Both</option>' +
+      "</select></label>" +
       '<label class="row cb"><input id="ed-camera" type="checkbox"/>' +
       '<span class="lbl">Show camera</span></label>' +
       '<label class="row cb"><input id="ed-tools" type="checkbox"/>' +
@@ -2093,10 +2362,12 @@ class DatronCockpitCardEditor extends HTMLElement {
     const onChange = () => this._emit();
     const pref = this.shadowRoot.getElementById("ed-prefix");
     const title = this.shadowRoot.getElementById("ed-title");
+    const timer = this.shadowRoot.getElementById("ed-timer");
     const cam = this.shadowRoot.getElementById("ed-camera");
     const tools = this.shadowRoot.getElementById("ed-tools");
     if (pref) pref.addEventListener("change", onChange);
     if (title) title.addEventListener("input", onChange);
+    if (timer) timer.addEventListener("change", onChange);
     if (cam) cam.addEventListener("change", onChange);
     if (tools) tools.addEventListener("change", onChange);
     // Delegated handler for the dynamically-built extra-camera checkboxes.
@@ -2210,11 +2481,13 @@ class DatronCockpitCardEditor extends HTMLElement {
     const cfg = this._config || {};
     const active = this.shadowRoot.activeElement;
     const title = this.shadowRoot.getElementById("ed-title");
+    const timer = this.shadowRoot.getElementById("ed-timer");
     const cam = this.shadowRoot.getElementById("ed-camera");
     const tools = this.shadowRoot.getElementById("ed-tools");
     const pref = this.shadowRoot.getElementById("ed-prefix");
     if (pref && pref !== active && cfg.prefix) pref.value = cfg.prefix;
     if (title && title !== active) title.value = cfg.title || "";
+    if (timer && timer !== active) timer.value = cfg.timer_source || "machine";
     if (cam && cam !== active) cam.checked = cfg.show_camera !== false;
     if (tools && tools !== active) tools.checked = cfg.show_tools !== false;
   }
@@ -2229,6 +2502,10 @@ class DatronCockpitCardEditor extends HTMLElement {
     const tv = title ? (title.value || "").trim() : "";
     if (tv) cfg.title = tv;
     else delete cfg.title;
+    const timer = this.shadowRoot.getElementById("ed-timer");
+    const ts = timer ? timer.value : "machine";
+    if (ts && ts !== "machine") cfg.timer_source = ts;
+    else delete cfg.timer_source;
     cfg.show_camera = cam ? cam.checked : true;
     cfg.show_tools = tools ? tools.checked : true;
     // Collect checked extra cameras in DOM (sorted) order.

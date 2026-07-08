@@ -471,6 +471,29 @@ MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "max_path_mm": _safe_get(d, "tool_spindle", "maxToolPath"),
         },
     ),
+    # Program-tool availability (computed by the medium coordinator from the
+    # already-cached tool lists; article number primary, category+diameter
+    # fallback). State = tools not currently loaded in the magazine.
+    DatronSensorEntityDescription(
+        key="program_tools_missing",
+        name="Program Tools Missing",
+        icon="mdi:alert-decagram",
+        state_class=SensorStateClass.MEASUREMENT,
+        coordinator_key=COORD_MEDIUM,
+        value_fn=lambda d: (
+            _safe_get(d, "program_tool_status", "missing_magazine", default=0)
+            + _safe_get(d, "program_tool_status", "missing_everywhere", default=0)
+        ),
+        attributes_fn=lambda d: {
+            "missing_magazine": _safe_get(
+                d, "program_tool_status", "missing_magazine", default=0
+            ),
+            "missing_everywhere": _safe_get(
+                d, "program_tool_status", "missing_everywhere", default=0
+            ),
+            "tools": _safe_get(d, "program_tool_status", "tools", default=[]),
+        },
+    ),
     # Tool counts
     DatronSensorEntityDescription(
         key="tools_in_changer_count",

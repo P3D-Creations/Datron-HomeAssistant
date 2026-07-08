@@ -22,6 +22,114 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _tool_article(tool: dict[str, Any]) -> str | None:
+    """Normalised article number (EDP / product ID), or None when unset."""
+    art = tool.get("articleNumber")
+    if isinstance(art, str):
+        art = art.strip().upper()
+        return art or None
+    return None
+
+
+def _tool_geometry(tool: dict[str, Any], attribute: str) -> float | None:
+    """Raw nominal-geometry value (metres for lengths), or None."""
+    for item in tool.get("nominalGeometry") or []:
+        if isinstance(item, dict) and item.get("attribute") == attribute:
+            return item.get("value")
+    return None
+
+
+def _tool_matches_storage(
+    tool: dict[str, Any],
+    articles: set[str],
+    geo_keys: set[tuple[str, float]],
+) -> bool:
+    """True if *tool* exists in a storage indexed by *articles*/*geo_keys*.
+
+    Primary match: article number (EDP). Secondary: category + diameter
+    (rounded to 1 µm) for tools without a usable article number.
+    """
+    art = _tool_article(tool)
+    if art is not None:
+        return art in articles
+    dia = _tool_geometry(tool, "Diameter")
+    cat = tool.get("category")
+    if dia is None or not isinstance(cat, str):
+        return False
+    return (cat, round(dia, 6)) in geo_keys
+
+
+def _storage_index(
+    tools: list[dict[str, Any]] | None,
+) -> tuple[set[str], set[tuple[str, float]]]:
+    """Build (article set, category+diameter set) lookups for a tool list."""
+    articles: set[str] = set()
+    geo_keys: set[tuple[str, float]] = set()
+    for tool in tools or []:
+        if not isinstance(tool, dict):
+            continue
+        art = _tool_article(tool)
+        if art is not None:
+            articles.add(art)
+        dia = _tool_geometry(tool, "Diameter")
+        cat = tool.get("category")
+        if dia is not None and isinstance(cat, str):
+            geo_keys.add((cat, round(dia, 6)))
+    return articles, geo_keys
+
+
+def _compute_program_tool_status(
+    tools_program: list[dict[str, Any]] | None,
+    tools_changer: list[dict[str, Any]] | None,
+    tools_warehouse: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Classify each program tool by availability.
+
+    status per tool: ``ok`` (in magazine), ``missing_magazine`` (in the
+    warehouse but not loaded), ``missing_everywhere`` (in neither).
+    Matching is article number first, category+diameter as fallback.
+    """
+    if not isinstance(tools_program, list):
+        return {"tools": [], "missing_magazine": 0, "missing_everywhere": 0}
+
+    mag_articles, mag_geo = _storage_index(tools_changer)
+    wh_articles, wh_geo = _storage_index(tools_warehouse)
+
+    out: list[dict[str, Any]] = []
+    missing_mag = 0
+    missing_all = 0
+    for tool in tools_program:
+        if not isinstance(tool, dict):
+            continue
+        in_mag = _tool_matches_storage(tool, mag_articles, mag_geo)
+        in_wh = _tool_matches_storage(tool, wh_articles, wh_geo)
+        if in_mag:
+            status = "ok"
+        elif in_wh:
+            status = "missing_magazine"
+            missing_mag += 1
+        else:
+            status = "missing_everywhere"
+            missing_all += 1
+        dia = _tool_geometry(tool, "Diameter")
+        out.append(
+            {
+                "tool_id": tool.get("toolId"),
+                "tool_number": tool.get("toolNumber"),
+                "name": tool.get("name"),
+                "article_number": tool.get("articleNumber"),
+                "category": tool.get("category"),
+                "diameter_mm": round(dia * 1000.0, 3) if dia is not None else None,
+                "status": status,
+            }
+        )
+    return {
+        "tools": out,
+        "missing_magazine": missing_mag,
+        "missing_everywhere": missing_all,
+    }
+
+
 def _directory_to_simpl_root(directory: str) -> str | None:
     """Convert a directory string from the Program payload to a SimPL root.
 
@@ -268,10 +376,17 @@ class DatronMediumCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.client.get_tool_in_spindle(),
                 self.client.get_tools_in_changer(),
                 self.client.get_tools_in_warehouse(),
+                self.client.get_tools_in_program(),
                 return_exceptions=True,
             )
 
-            keys = ["program", "tool_spindle", "tools_changer", "tools_warehouse"]
+            keys = [
+                "program",
+                "tool_spindle",
+                "tools_changer",
+                "tools_warehouse",
+                "tools_program",
+            ]
             data: dict[str, Any] = {}
             for key, result in zip(keys, results):
                 if isinstance(result, DatronAuthError):
@@ -281,6 +396,15 @@ class DatronMediumCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     data[key] = self.data.get(key) if self.data else None
                 else:
                     data[key] = result
+
+            # Program-tool availability. Pure in-memory matching — the Live
+            # client TTL-caches the large magazine/warehouse lists, so this
+            # adds no machine load and stays current within those TTLs.
+            data["program_tool_status"] = _compute_program_tool_status(
+                data.get("tools_program"),
+                data.get("tools_changer"),
+                data.get("tools_warehouse"),
+            )
 
             # Log raw response structure on first successful fetch
             if not self.data:
