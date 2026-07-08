@@ -79,7 +79,10 @@ BINARY_SENSORS: tuple[DatronBinarySensorEntityDescription, ...] = (
             _safe_get(d, "machine_status", "executionState") == "Running"
         ),
     ),
-    # Machine has error
+    # Machine has error — fires on an Error-type notification, an open dialog
+    # whose severity is Error (e.g. a fault/tool-breakage prompt the machine
+    # raises interactively), or an empty Microjet tank. Gives a single
+    # PROBLEM-class sensor to alert / automate off of.
     DatronBinarySensorEntityDescription(
         key="machine_error",
         name="Machine Error",
@@ -91,6 +94,7 @@ BINARY_SENSORS: tuple[DatronBinarySensorEntityDescription, ...] = (
                 isinstance(n, dict) and n.get("type") == "Error"
                 for n in (_safe_get(d, "notifications", default=[]) or [])
             )
+            or _safe_get(d, "open_dialog", "severity") == "Error"
             or _safe_get(d, "spray_system", "microjet", "tank1IsEmpty", "status") is True
         ),
     ),

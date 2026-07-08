@@ -41,15 +41,18 @@ from .entity import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
+# Size of the dynamic dialog-button pool. Datron dialogs have at most a handful
+# of buttons; extra slots go unavailable when the open dialog has fewer.
+DIALOG_BUTTON_POOL_SIZE = 4
+
 # Button keys kept for Datron Live entries. Everything else (Start / Abort /
 # Park / Reload / Load-Selected / Execute-Selected) has no Live backing.
 LIVE_BUTTON_KEYS = {
     "refresh_data",
     "pause_program",
     "resume_program",
-    "confirm_dialog_ok",
-    "confirm_dialog_cancel",
     "activate_machine",
+    *{f"dialog_button_{i}" for i in range(1, DIALOG_BUTTON_POOL_SIZE + 1)},
 }
 
 
@@ -172,25 +175,23 @@ async def async_setup_entry(
             execute=True,
         )),
 
-        # ── Dialog control (Automation API) ──────────────────
-        ("confirm_dialog_ok", DatronConfirmDialogButton(
-            entry=entry,
-            client=client,
-            coordinator=fast_coordinator,
-            key="confirm_dialog_ok",
-            name="Confirm Dialog (OK)",
-            icon="mdi:check-circle",
-            pick_left=False,
-        )),
-        ("confirm_dialog_cancel", DatronConfirmDialogButton(
-            entry=entry,
-            client=client,
-            coordinator=fast_coordinator,
-            key="confirm_dialog_cancel",
-            name="Confirm Dialog (Cancel)",
-            icon="mdi:cancel",
-            pick_left=True,
-        )),
+        # ── Dialog control — dynamic pool mirroring the live dialog ──
+        # Each slot's label and action track the machine's ACTUAL dialog
+        # buttons (exact match, no per-dialog entity churn). Slots beyond the
+        # current dialog's button count report unavailable.
+        *[
+            (
+                f"dialog_button_{i}",
+                DatronDynamicDialogButton(
+                    entry=entry,
+                    client=client,
+                    coordinator=fast_coordinator,
+                    index=i - 1,
+                    key=f"dialog_button_{i}",
+                ),
+            )
+            for i in range(1, DIALOG_BUTTON_POOL_SIZE + 1)
+        ],
         ("activate_machine", DatronDialogLabelButton(
             entry=entry,
             client=client,
@@ -494,27 +495,35 @@ class DatronSelectedProgramActionButton(ButtonEntity):
             ) from err
 
 
-class DatronConfirmDialogButton(CoordinatorEntity, ButtonEntity):
-    """Confirm (or cancel) the currently open machine dialog."""
+class DatronDynamicDialogButton(CoordinatorEntity, ButtonEntity):
+    """One slot in a dynamic pool that mirrors the machine's open dialog.
+
+    The slot's displayed label AND its action track the actual button at
+    ``index`` in the currently open dialog (``leftButtons`` then
+    ``rightButtons``), so the buttons always match exactly what the machine is
+    showing — with no per-dialog entity creation/removal. Slots past the
+    dialog's button count report unavailable, as do all slots when no dialog is
+    open.
+    """
 
     _attr_has_entity_name = True
+    _attr_icon = "mdi:gesture-tap-button"
 
     def __init__(
         self,
         entry: ConfigEntry,
         client: DatronApiClient,
         coordinator: DataUpdateCoordinator,
+        index: int,
         key: str,
-        name: str,
-        icon: str,
-        pick_left: bool = False,
     ) -> None:
         super().__init__(coordinator)
         self._client = client
-        self._pick_left = pick_left
+        self._index = index
         self._attr_unique_id = f"{entry.entry_id}_{key}"
-        self._attr_name = name
-        self._attr_icon = icon
+        # Stable fallback name → stable entity_id (…_dialog_button_N). The
+        # ``name`` property below overrides the *displayed* label live.
+        self._attr_name = f"Dialog Button {index + 1}"
         self._attr_device_info = _device_info(entry)
 
     def _open_dialog(self) -> dict[str, Any] | None:
@@ -522,50 +531,64 @@ class DatronConfirmDialogButton(CoordinatorEntity, ButtonEntity):
         dialog = coord_data.get("open_dialog")
         return dialog if isinstance(dialog, dict) else None
 
+    @staticmethod
+    def _dialog_buttons(dialog: dict[str, Any]) -> list[str]:
+        left = dialog.get("leftButtons") or []
+        right = dialog.get("rightButtons") or []
+        return [b for b in (*left, *right) if isinstance(b, str)]
+
+    def _label(self) -> str | None:
+        dialog = self._open_dialog()
+        if not dialog:
+            return None
+        buttons = self._dialog_buttons(dialog)
+        if 0 <= self._index < len(buttons):
+            return buttons[self._index]
+        return None
+
+    def _apply_label(self) -> None:
+        """Point the displayed name at the live button label (or the fallback).
+
+        We update ``_attr_name`` rather than override the ``name`` property so
+        the entity_id is generated once from the stable "Dialog Button N" name
+        at registration (the coordinator already holds data by then, so a
+        property would risk baking a live label into the entity_id).
+        """
+        self._attr_name = self._label() or f"Dialog Button {self._index + 1}"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # entity_id is registered now; safe to reflect the live label.
+        self._apply_label()
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:
+        self._apply_label()
+        super()._handle_coordinator_update()
+
     @property
     def available(self) -> bool:
         if not super().available:
             return False
-        return self._open_dialog() is not None
+        return self._label() is not None
 
     async def async_press(self) -> None:
         dialog = self._open_dialog()
-        if not dialog:
-            raise HomeAssistantError("No open dialog to confirm/cancel")
-
-        dialog_id: str | None = dialog.get("id")
-        if not dialog_id:
-            raise HomeAssistantError("Open dialog has no ID field")
-
-        primary_key = "leftButtons" if self._pick_left else "rightButtons"
-        fallback_key = "rightButtons" if self._pick_left else "leftButtons"
-
-        primary: list[str] = dialog.get(primary_key) or []
-        if primary:
-            # NEXT dialogs carry both leftButtons and rightButtons, so each
-            # button hits its own side (unchanged behaviour).
-            button_label = primary[0]
-        else:
-            # Datron Live dialogs expose only rightButtons. When the "Cancel"
-            # button (pick_left) has to fall back to that shared list, choose the
-            # LAST label so it never presses the same button as the "OK" button
-            # (which presses the first) — pressing the primary action on a CNC
-            # "Cancel" would be dangerous.
-            fallback: list[str] = dialog.get(fallback_key) or []
-            if not fallback:
-                raise HomeAssistantError(
-                    f"Dialog '{dialog.get('caption', '')}' has no buttons to click"
-                )
-            button_label = fallback[-1] if self._pick_left else fallback[0]
+        dialog_id: str | None = dialog.get("id") if dialog else None
+        label = self._label()
+        if not dialog_id or not label:
+            raise HomeAssistantError(
+                f"No dialog button #{self._index + 1} to press"
+            )
         _LOGGER.debug(
-            "Confirming dialog '%s' with button '%s'",
-            dialog.get("caption", ""),
-            button_label,
+            "Pressing dialog button '%s' on '%s'",
+            label,
+            dialog.get("caption", "") if dialog else "",
         )
         try:
-            await self._client.confirm_dialog(dialog_id, button_label)
+            await self._client.confirm_dialog(dialog_id, label)
         except DatronApiError as err:
-            raise HomeAssistantError(f"Confirm dialog failed: {err}") from err
+            raise HomeAssistantError(f"Dialog button failed: {err}") from err
 
 
 class DatronDialogLabelButton(CoordinatorEntity, ButtonEntity):
