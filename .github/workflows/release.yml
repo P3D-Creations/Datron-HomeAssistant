@@ -38,11 +38,16 @@ jobs:
 
       - name: Determine version bump
         id: bump
+        # Pass the commit message via env, NOT inline `${{ }}` interpolation, so
+        # punctuation in the message (quotes, backticks, parens) can never break
+        # the shell. GitHub sets the env value directly instead of pasting it
+        # into the script text.
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          MESSAGE="${{ github.event.head_commit.message }}"
-          if echo "$MESSAGE" | grep -q "\[major\]"; then
+          if printf '%s' "$COMMIT_MSG" | grep -q "\[major\]"; then
             echo "part=major" >> "$GITHUB_OUTPUT"
-          elif echo "$MESSAGE" | grep -q "\[minor\]"; then
+          elif printf '%s' "$COMMIT_MSG" | grep -q "\[minor\]"; then
             echo "part=minor" >> "$GITHUB_OUTPUT"
           else
             echo "part=patch" >> "$GITHUB_OUTPUT"

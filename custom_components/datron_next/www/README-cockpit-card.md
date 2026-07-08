@@ -77,11 +77,20 @@ the entity id, drop the leading `sensor.` and the trailing `_status`. What remai
   restart / stutter on each poll — its `src` is only touched when the selected entity or its
   access token changes. See **Cameras** below for showing more than one.
 - Tool-in-spindle panel that leads with the **tool specs** (not the tool number): a spec line
-  `⌀diameter mm · Rcorner-radius · LOC flute-length mm · reach projection mm · Nflutes` (each
-  piece omitted when absent; `R…` only for corner-radius / bullnose tools), with `EDP article`
-  and the translated description muted below, plus a category icon and the magazine / warehouse
-  chips. Shows "No tool in spindle" when the spindle is empty. The tool-browser rows and detail
-  popup use the same `⌀ / R / LOC / reach / FL` notation.
+  `⌀diameter mm · Rcorner-radius · LOC flute-length mm · reach shoulder-length mm · Nflutes`
+  (each piece omitted when absent; `R…` only for corner-radius / bullnose tools), with
+  `EDP article` and the translated description muted below, plus a category icon and the
+  magazine / warehouse chips. Shows "No tool in spindle" when the spindle is empty. **Click the
+  spindle tool** (icon / spec area) to open its full **tool detail popup** — the same view as
+  clicking a magazine / warehouse row; the details are fetched via
+  `datron_next.get_tools {storage: spindle}`. The tool-browser rows and detail popup use the
+  same `⌀ / R / LOC / reach / FL` notation.
+  - **Reach** = the shoulder / toric-cut length (flute length plus any relieved neck; from
+    `ShoulderLength` in tool geometry, or the `shoulder_length_mm` sensor attribute). It is
+    shown **only when it exceeds the flute length** (by more than 0.2 mm) — i.e. for
+    reduced-neck tools; plain tools where shoulder == flute show no reach. The grouped
+    "Tool data" section of the detail popup still lists the raw Toric cut / Unclamping lengths
+    under their Datron labels regardless.
 - Pause / Resume action buttons (greyed out when unavailable; Resume highlights when paused).
 
 Missing entities are hidden or shown as a dash — the card never throws at render time.

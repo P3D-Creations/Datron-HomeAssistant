@@ -73,9 +73,10 @@ def _safe_get(data: dict, *keys: str, default: Any = None) -> Any:
 def _get_geometry_value(tool_data: dict | None, geom_key: str, attribute: str) -> float | None:
     """Extract a raw value from a tool's geometry array by attribute name.
 
-    NOTE: The Datron API returns all geometry *length* values in **microns**.
-    Use ``_get_geometry_mm`` for length attributes (Diameter, FluteLength, etc.)
-    so that the value is automatically converted to millimetres.
+    NOTE: The Datron API returns all geometry *length* values in **metres**
+    (SI), e.g. Diameter 0.008 = 8 mm. Use ``_get_geometry_mm`` for length
+    attributes so the value is converted to millimetres. Dimensionless values
+    (NumberOfFlutes) come straight through here.
     """
     if not isinstance(tool_data, dict):
         return None
@@ -94,12 +95,12 @@ def _get_geometry_mm(
     attribute: str,
     precision: int = 4,
 ) -> float | None:
-    """Return a geometry length value converted from microns to millimetres.
+    """Return a geometry length value converted from metres to millimetres.
 
     The Datron API delivers all dimensional geometry values (Diameter,
-    FluteLength, BodyLength, OverallLength, CornerRadius, etc.) in **microns**.
-    This helper divides the raw value by 1000 and rounds to *precision*
-    decimal places (default 4 → 0.1 µm resolution).
+    FluteLength, BodyLength, OverallLength, CornerRadius, etc.) in **metres**
+    (SI), e.g. 0.008 m → 8 mm. This helper multiplies by 1000 and rounds to
+    *precision* decimals (default 4 → 0.1 µm resolution).
 
     Do **not** use this for dimensionless attributes such as NumberOfFlutes;
     use ``_get_geometry_value`` directly for those.
@@ -107,7 +108,7 @@ def _get_geometry_mm(
     raw = _get_geometry_value(tool_data, geom_key, attribute)
     if raw is None:
         return None
-    return round(raw / 1000.0, precision)
+    return round(raw * 1000.0, precision)
 
 
 # ── Sensor descriptions ──────────────────────────────────────────
@@ -428,7 +429,7 @@ MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "holder_type": _safe_get(d, "tool_spindle", "holderType"),
             "comment": _safe_get(d, "tool_spindle", "comment"),
             "tool_image": _safe_get(d, "tool_spindle", "imageUrl"),
-            # Geometry lengths — converted from API microns → mm
+            # Geometry lengths — converted from API metres → mm
             "flute_length_mm": (
                 _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "FluteLength")
                 or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "FluteLength")
@@ -436,6 +437,15 @@ MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
             "tool_projection_mm": (
                 _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "BodyLength")
                 or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "BodyLength")
+            ),
+            # Reach / usable depth = ShoulderLength ("Toric cut length"): the
+            # length from the tip down to where the shank/shoulder steps up.
+            # Equals flute length on plain tools; greater on reduced-neck tools
+            # (e.g. 8 mm flute + relieved neck → 17 mm reach). BodyLength is
+            # usually null so it is not a reliable reach source.
+            "shoulder_length_mm": (
+                _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "ShoulderLength")
+                or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "ShoulderLength")
             ),
             "overall_length_mm": (
                 _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "OverallLength")

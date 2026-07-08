@@ -6,7 +6,7 @@
  * No build step, no external dependencies. Loaded by HA as an ES module.
  */
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.6.0";
 
 console.info(
   "%c DATRON-COCKPIT-CARD %c v" + CARD_VERSION + " ",
@@ -107,6 +107,7 @@ class DatronCockpitCard extends HTMLElement {
     this._toolCache = {}; // storage -> tools array (successful fetch)
     this._toolStatus = {}; // storage -> "loading" | "error" | "ok"
     this._ovDetailTool = null; // tool object shown in the detail popup, or null
+    this._ovFromSpindle = false; // detail opened from the spindle panel (no list behind)
     this._camSrc = null; // last MJPEG stream src applied to the persistent <img>
     this._camIndex = 0; // selected camera (index into the built camera list)
     // Notification history dropdown state
@@ -428,6 +429,8 @@ class DatronCockpitCard extends HTMLElement {
         this._camIndex = ((this._camIndex || 0) + 1) % cams.length;
         this._updateCamera();
       }
+    } else if (action === "spindle-detail") {
+      this._openSpindleDetail();
     } else if (action === "open-tools") {
       this._openOverlay(arg || "magazine");
     } else if (action === "ov-tab") {
@@ -853,10 +856,19 @@ class DatronCockpitCard extends HTMLElement {
         const r = this._fmtR(cr);
         if (r !== null) pieces.push("R" + r);
       }
+      const fluteMm = Number(a.flute_length_mm);
       const loc = this._fmtMmNum(a.flute_length_mm, 2);
       if (loc !== null) pieces.push("LOC " + loc + " mm");
-      const reach = this._fmtMmNum(a.tool_projection_mm, 2);
-      if (reach !== null) pieces.push("reach " + reach + " mm");
+      // Reach = shoulder / toric-cut length; only when it exceeds flute length
+      // (reduced-neck tools), otherwise it just duplicates LOC.
+      const shoulderMm = Number(a.shoulder_length_mm);
+      if (
+        isFinite(shoulderMm) &&
+        shoulderMm > 0 &&
+        (!isFinite(fluteMm) || shoulderMm > fluteMm + 0.2)
+      ) {
+        pieces.push("reach " + this._trim(shoulderMm.toFixed(2)) + " mm");
+      }
       const nf = Number(a.number_of_flutes);
       if (isFinite(nf) && nf > 0) pieces.push(Math.round(nf) + "FL");
       const spec = pieces.join(" · ") || this._translateCategory(cat) || "Tool";
@@ -876,15 +888,23 @@ class DatronCockpitCard extends HTMLElement {
           : "");
     }
 
+    // The tool icon + spec area opens the full detail popup (same view as a
+    // tool-browser row). The magazine/warehouse chips keep their own actions.
+    const clickable = tappable && !empty;
     return (
       '<div class="panel toolstrip">' +
+      "<span" +
+      (clickable
+        ? ' class="ts-main tap" data-action="spindle-detail"'
+        : ' class="ts-main"') +
+      ">" +
       '<span class="ts-icon">' +
       this._toolIcon(cat) +
       "</span>" +
       '<span class="ts-info">' +
       infoHtml +
       "</span>" +
-      '<span class="bar-spacer"></span>' +
+      "</span>" +
       (figs ? '<span class="tfigs">' + figs + "</span>" : "") +
       "</div>"
     );
@@ -1081,6 +1101,7 @@ class DatronCockpitCard extends HTMLElement {
   _closeOverlay() {
     this._ovOpen = false;
     this._ovDetailTool = null;
+    this._ovFromSpindle = false;
     if (this._ovEl) {
       this._ovEl.style.display = "none";
       this._ovEl.innerHTML = "";
@@ -1091,10 +1112,43 @@ class DatronCockpitCard extends HTMLElement {
   _onKeyDown(ev) {
     if (this._ovOpen && ev.key === "Escape") {
       ev.stopPropagation();
-      // Esc from the detail popup returns to the list; from the list, closes.
-      if (this._ovDetailTool) this._backToList();
+      // Esc from a browser-row detail returns to the list; from a spindle
+      // detail (no list behind it) or the list itself, it closes.
+      if (this._ovDetailTool && !this._ovFromSpindle) this._backToList();
       else this._closeOverlay();
     }
+  }
+
+  // Open the full detail popup for the tool currently in the spindle. Fetches
+  // the spindle tool's complete object via the same service the browser uses.
+  async _openSpindleDetail() {
+    if (!this._hass || !this._ovEl) return;
+    let tool = null;
+    try {
+      const deviceId = this._deviceId();
+      const data = { storage: "spindle" };
+      if (deviceId) data.device_id = deviceId;
+      const res = await this._hass.callService(
+        "datron_next",
+        "get_tools",
+        data,
+        undefined,
+        false,
+        true
+      );
+      if (res && res.response && Array.isArray(res.response.tools)) {
+        tool = res.response.tools[0] || null;
+      }
+    } catch (e) {
+      tool = null;
+    }
+    if (!tool) return; // nothing to show
+    this._ovOpen = true;
+    this._ovFromSpindle = true;
+    this._ovDetailTool = tool;
+    this._ovEl.style.display = "block";
+    document.addEventListener("keydown", this._onKeyDown, true);
+    this._renderDetail(tool);
   }
 
   _openTab(storage) {
@@ -1275,13 +1329,22 @@ class DatronCockpitCard extends HTMLElement {
         if (r !== null) pieces.push("R" + r);
       }
     }
-    if (gm.FluteLength != null) {
-      const f = this._mmVal(gm.FluteLength, 2);
-      if (f !== null) pieces.push("LOC " + f + " mm");
+    const fluteMm =
+      gm.FluteLength != null ? Number(gm.FluteLength) * 1000 : null;
+    if (fluteMm !== null && isFinite(fluteMm)) {
+      pieces.push("LOC " + this._trim(fluteMm.toFixed(2)) + " mm");
     }
-    if (gm.BodyLength != null) {
-      const b = this._mmVal(gm.BodyLength, 2);
-      if (b !== null) pieces.push("reach " + b + " mm");
+    // Reach = shoulder / toric-cut length; shown only when the relieved neck
+    // makes it exceed the flute length (plain tools have shoulder == flute).
+    if (gm.ShoulderLength != null) {
+      const shoulderMm = Number(gm.ShoulderLength) * 1000;
+      if (
+        isFinite(shoulderMm) &&
+        shoulderMm > 0 &&
+        (fluteMm === null || !isFinite(fluteMm) || shoulderMm > fluteMm + 0.2)
+      ) {
+        pieces.push("reach " + this._trim(shoulderMm.toFixed(2)) + " mm");
+      }
     }
     if (gm.NumberOfFlutes != null) {
       const n = Number(gm.NumberOfFlutes);
@@ -1334,12 +1397,14 @@ class DatronCockpitCard extends HTMLElement {
     const arr = this._toolCache[storage] || [];
     const t = arr[index];
     if (!t) return;
+    this._ovFromSpindle = false;
     this._ovDetailTool = t;
     this._renderDetail(t);
   }
 
   _backToList() {
     this._ovDetailTool = null;
+    this._ovFromSpindle = false;
     this._renderOverlayShell();
     this._renderOverlayList();
   }
@@ -1457,9 +1522,11 @@ class DatronCockpitCard extends HTMLElement {
       '<div class="ov-backdrop" data-action="ov-close"></div>' +
       '<div class="ov-panel det-panel" role="dialog" aria-label="Tool detail">' +
       '<div class="ov-head det-head">' +
-      '<button class="ov-backbtn" data-action="ov-back" aria-label="Back">' +
-      this._svgChevronLeft() +
-      "</button>" +
+      (this._ovFromSpindle
+        ? ""
+        : '<button class="ov-backbtn" data-action="ov-back" aria-label="Back">' +
+          this._svgChevronLeft() +
+          "</button>") +
       '<span class="det-title">' +
       this._esc(name) +
       "</span>" +
@@ -1733,6 +1800,12 @@ class DatronCockpitCard extends HTMLElement {
 
       /* Tool strip */
       .toolstrip { display:flex; align-items:center; gap:12px; }
+      .ts-main {
+        display:flex; align-items:center; gap:12px; flex:1; min-width:0;
+        border-radius:3px; margin:-4px; padding:4px;
+      }
+      .ts-main.tap { cursor:pointer; transition:background .12s; }
+      .ts-main.tap:hover { background:rgba(255,255,255,.08); }
       .ts-icon { display:inline-flex; color:#dcdcdc; flex-shrink:0; }
       .ts-info { display:flex; flex-direction:column; gap:2px; min-width:0; }
       .ts-spec {
