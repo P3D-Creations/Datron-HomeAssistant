@@ -2236,6 +2236,16 @@ class DatronCockpitCard extends HTMLElement {
         position:absolute; inset:0; width:100%; height:100%;
         object-fit:contain; background:#3a3a3a;
         opacity:0; transition:opacity .2s ease;
+        /* Machine renders thumbnails tip-up; flip to tip-down and zoom.
+           Uniform zoom keeps tool-to-tool scale consistent. translateY pins
+           the displayed TOP (the holder, post-flip) to the frame top while
+           scaling: scale about center lifts the top by (zoom-1)*50% of the
+           height, so translate down by exactly that. Growth goes to the
+           sides and downward. Tune --tool-zoom to taste. */
+        --tool-zoom: 1.4;
+        transform: translateY(calc((var(--tool-zoom) - 1) * 50%))
+                   rotate(180deg)
+                   scale(var(--tool-zoom));
       }
       .det-thumb.show { opacity:1; }
       .det-herometa { display:flex; flex-direction:column; gap:8px; min-width:0; }
