@@ -37,15 +37,19 @@ Add that URL as a resource of type **JavaScript Module**.
 
 A **visual editor** is available: when you add the card from the dashboard UI it opens a small
 form where you pick the **machine** (auto-discovered from your Datron Live entities), set an
-optional **title**, and toggle **Show camera** and **Show tool browser**. You can still edit the
-YAML directly:
+optional **title**, toggle **Show camera** and **Show tool browser**, and tick any **Extra
+cameras** to include (every `camera.*` entity except the built-in machine camera, listed by
+friendly name). You can still edit the YAML directly:
 
 ```yaml
 type: custom:datron-cockpit-card
 prefix: datron_m8cube_1804685    # REQUIRED — shared entity slug (part after "domain." and before the per-entity suffix)
 title: M8Cube                    # optional — overrides the header title
-show_camera: true                # optional — default true
+show_camera: true                # optional — default true; includes the built-in machine camera
 show_tools: true                 # optional — default true; enables the tool browser overlay
+extra_cameras:                   # optional — additional camera entities to cycle through
+  - camera.shop_cam
+  - camera.overhead
 ```
 
 The card builds every entity id as `${domain}.${prefix}_${suffix}` (for example
@@ -68,15 +72,40 @@ the entity id, drop the leading `sensor.` and the trailing `_status`. What remai
   a job-progress bar.
 - Vacuum, compressed-air, clamping and Microjet metric tiles (tinted green when active/OK).
   Pressure values are rounded to 2 decimals.
-- Live machine camera as a **continuous MJPEG stream** (`/api/camera_proxy_stream/...`). The
+- Live camera(s) as a **continuous MJPEG stream** (`/api/camera_proxy_stream/...`). The
   `<img>` lives in a persistent host outside the per-update content, so the video does not
-  restart / stutter on each poll — its `src` is only touched when the entity or access token
-  changes.
-- Tool-in-spindle panel with tool image, number, description, diameter and magazine/warehouse
-  chips.
+  restart / stutter on each poll — its `src` is only touched when the selected entity or its
+  access token changes. See **Cameras** below for showing more than one.
+- Tool-in-spindle panel that leads with the **tool specs** (not the tool number): a spec line
+  `⌀diameter mm · Rcorner-radius · LOC flute-length mm · reach projection mm · Nflutes` (each
+  piece omitted when absent; `R…` only for corner-radius / bullnose tools), with `EDP article`
+  and the translated description muted below, plus a category icon and the magazine / warehouse
+  chips. Shows "No tool in spindle" when the spindle is empty. The tool-browser rows and detail
+  popup use the same `⌀ / R / LOC / reach / FL` notation.
 - Pause / Resume action buttons (greyed out when unavailable; Resume highlights when paused).
 
 Missing entities are hidden or shown as a dash — the card never throws at render time.
+
+## Cameras
+
+The card can show several cameras but displays **one at a time**. The displayed list is built
+in order: the built-in `camera.${prefix}_machine_camera` first (only when `show_camera` is
+true and the entity exists), then each entity in **`extra_cameras`** that exists in
+`hass.states`, de-duplicated. Each camera is labelled by its `friendly_name` (the machine
+camera falls back to "Machine Camera"). If the list ends up empty the camera panel is hidden.
+
+Only the **selected** camera streams, via `/api/camera_proxy_stream/${entityId}?token=…` using
+that entity's own `access_token`. The stream `<img>` is persistent: switching cameras (or a
+token rotation) re-points `img.src`, but a same-camera re-render never restarts the stream. The
+current camera's name is shown as a caption on the panel.
+
+When two or more cameras are available, a compact **next-camera** button plus position dots
+appear on the panel; clicking cycles to the next camera (wrapping) and the selected index
+persists across the per-poll re-render. If a selected camera or its access token is missing, a
+small "Camera unavailable" placeholder is shown and you can still cycle to the others.
+
+`extra_cameras` is optional — omit it (or leave every box unticked in the editor) to show just
+the machine camera as before.
 
 ## Notifications
 
@@ -86,7 +115,9 @@ history list (chevron rotates when open). History is fetched lazily via the
 newest-first with a severity dot coloured by `type` (Error red, Warning orange, Info blue,
 Temporary grey). `Temporary` progress entries are de-emphasised and **hidden by default**;
 a **Hide/Show progress** toggle filters them, and the list is capped at 60 rows in a scroll
-container. If the response service is unavailable it shows "Couldn't load notifications".
+container. "Tool #N has been loaded into the spindle" load-spam is **always** filtered out of
+the dropdown (regardless of the progress toggle). If the response service is unavailable it
+shows "Couldn't load notifications".
 
 ## Tool browser
 

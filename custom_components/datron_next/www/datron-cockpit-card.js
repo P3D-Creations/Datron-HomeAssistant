@@ -6,7 +6,7 @@
  * No build step, no external dependencies. Loaded by HA as an ES module.
  */
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.4.0";
 
 console.info(
   "%c DATRON-COCKPIT-CARD %c v" + CARD_VERSION + " ",
@@ -108,6 +108,7 @@ class DatronCockpitCard extends HTMLElement {
     this._toolStatus = {}; // storage -> "loading" | "error" | "ok"
     this._ovDetailTool = null; // tool object shown in the detail popup, or null
     this._camSrc = null; // last MJPEG stream src applied to the persistent <img>
+    this._camIndex = 0; // selected camera (index into the built camera list)
     // Notification history dropdown state
     this._notifOpen = false;
     this._notifHideProgress = true; // hide "Temporary" progress spam by default
@@ -236,6 +237,31 @@ class DatronCockpitCard extends HTMLElement {
     const n = Number(raw);
     if (!isFinite(n)) return null;
     return this._trim((n * 1000).toFixed(dec == null ? 2 : dec));
+  }
+
+  // Format an ALREADY-mm numeric value to a trimmed string, or null.
+  _fmtMmNum(v, dec) {
+    const n = Number(v);
+    if (!isFinite(n)) return null;
+    return this._trim(n.toFixed(dec == null ? 2 : dec));
+  }
+
+  // Corner-radius notation, e.g. 1 -> "1.0", 0.5 -> "0.5", 1.25 -> "1.25".
+  // Value is in mm. Keeps at least one decimal.
+  _fmtR(vMm) {
+    const n = Number(vMm);
+    if (!isFinite(n)) return null;
+    return n.toFixed(2).replace(/0$/, "");
+  }
+
+  // True for corner-radius / bullnose tool categories.
+  _isCornerRadiusCat(cat) {
+    const c = String(cat == null ? "" : cat).toLowerCase();
+    return (
+      c.indexOf("bullnose") !== -1 ||
+      c === "millingradius" ||
+      c.indexOf("cornerradius") !== -1
+    );
   }
 
   // Prettify an unknown camelCase term: strip a leading "Milling", space caps.
@@ -396,6 +422,12 @@ class DatronCockpitCard extends HTMLElement {
     } else if (action === "notif-hideprogress") {
       this._notifHideProgress = !this._notifHideProgress;
       this._update();
+    } else if (action === "cam-next") {
+      const cams = this._cameraList();
+      if (cams.length) {
+        this._camIndex = ((this._camIndex || 0) + 1) % cams.length;
+        this._updateCamera();
+      }
     } else if (action === "open-tools") {
       this._openOverlay(arg || "magazine");
     } else if (action === "ov-tab") {
@@ -504,9 +536,11 @@ class DatronCockpitCard extends HTMLElement {
     }
     const all = Array.isArray(this._notifCache) ? this._notifCache : [];
     const hide = this._notifHideProgress;
-    let list = all;
+    // Always drop "tool loaded into the spindle" spam.
+    const loadRe = /tool\s*#?\s*\d+\s+has been loaded into the spindle/i;
+    let list = all.filter((n) => !loadRe.test(this._notifMsg(n)));
     if (hide) {
-      list = all.filter(
+      list = list.filter(
         (n) => this._notifType(n).toLowerCase() !== "temporary"
       );
     }
@@ -777,8 +811,9 @@ class DatronCockpitCard extends HTMLElement {
     const s = this._st(this._eid("sensor", "tool_in_spindle"));
     if (!s) return "";
     const a = s.attributes || {};
-    const toolNo = a.tool_number;
-    const desc = this._translateTerms(a.description || s.state);
+    const cat = this._valid(a.category) ? a.category : "";
+    const empty =
+      !this._valid(s.state) || String(s.state).toLowerCase() === "empty";
 
     const mag = this._state("sensor", "tools_in_magazine");
     const wh = this._state("sensor", "tools_in_warehouse");
@@ -804,18 +839,50 @@ class DatronCockpitCard extends HTMLElement {
         this._esc(wh) +
         '</span><span class="tfig-l">Warehouse</span></span>';
 
+    // Spec-first info (characteristics, not the tool number), matching the
+    // tool-browser row style. Spindle attributes are already in mm.
+    let infoHtml;
+    if (empty) {
+      infoHtml = '<span class="ts-spec ts-empty">No tool in spindle</span>';
+    } else {
+      const pieces = [];
+      const dia = this._fmtMmNum(a.diameter_mm, 3);
+      if (dia !== null) pieces.push("⌀" + dia + " mm");
+      const cr = Number(a.corner_radius_mm);
+      if (isFinite(cr) && cr > 0 && this._isCornerRadiusCat(cat)) {
+        const r = this._fmtR(cr);
+        if (r !== null) pieces.push("R" + r);
+      }
+      const loc = this._fmtMmNum(a.flute_length_mm, 2);
+      if (loc !== null) pieces.push("LOC " + loc + " mm");
+      const reach = this._fmtMmNum(a.tool_projection_mm, 2);
+      if (reach !== null) pieces.push("reach " + reach + " mm");
+      const nf = Number(a.number_of_flutes);
+      if (isFinite(nf) && nf > 0) pieces.push(Math.round(nf) + "FL");
+      const spec = pieces.join(" · ") || this._translateCategory(cat) || "Tool";
+
+      const sub = [];
+      if (this._valid(a.article_number)) sub.push("EDP " + a.article_number);
+      if (this._valid(a.description))
+        sub.push(this._translateTerms(a.description));
+      const subLine = sub.join(" · ");
+
+      infoHtml =
+        '<span class="ts-spec">' +
+        this._esc(spec) +
+        "</span>" +
+        (subLine
+          ? '<span class="ts-sub">' + this._esc(subLine) + "</span>"
+          : "");
+    }
+
     return (
       '<div class="panel toolstrip">' +
       '<span class="ts-icon">' +
-      this._svgEndmill() +
+      this._toolIcon(cat) +
       "</span>" +
       '<span class="ts-info">' +
-      (this._valid(toolNo)
-        ? '<span class="ts-no">T' + this._esc(toolNo) + "</span>"
-        : "") +
-      '<span class="ts-name">' +
-      this._esc(this._valid(desc) ? desc : "No tool") +
-      "</span>" +
+      infoHtml +
       "</span>" +
       '<span class="bar-spacer"></span>' +
       (figs ? '<span class="tfigs">' + figs + "</span>" : "") +
@@ -874,45 +941,128 @@ class DatronCockpitCard extends HTMLElement {
   //
   // The camera lives in a PERSISTENT host outside #content so the MJPEG
   // stream <img> survives every hass update. Rebuilding it would restart the
-  // stream and stutter the video, so we build the <img> once and only touch
-  // its .src when (entity id, access_token) actually changes.
+  // stream and stutter the video, so we build the panel/img ONCE and only
+  // touch img.src when the computed src (entity id + access_token) changes.
+  //
+  // Multiple cameras are shown ONE AT A TIME: the built-in machine camera
+  // (when show_camera) first, then any existing entities from `extra_cameras`.
+  // `this._camIndex` selects which one; a "next" button cycles through them.
+
+  // Ordered, de-duplicated list of displayable cameras: [{id, label}].
+  _cameraList() {
+    const out = [];
+    const seen = {};
+    const states = (this._hass && this._hass.states) || {};
+
+    if (this._config && this._config.show_camera !== false) {
+      const machineId = "camera." + this._config.prefix + "_machine_camera";
+      const s = states[machineId];
+      if (s) {
+        seen[machineId] = true;
+        const fn = s.attributes && s.attributes.friendly_name;
+        out.push({ id: machineId, label: this._valid(fn) ? fn : "Machine Camera" });
+      }
+    }
+
+    const extra =
+      this._config && Array.isArray(this._config.extra_cameras)
+        ? this._config.extra_cameras
+        : [];
+    for (let i = 0; i < extra.length; i++) {
+      const id = extra[i];
+      if (!id || seen[id]) continue;
+      const s = states[id];
+      if (!s) continue;
+      seen[id] = true;
+      const fn = s.attributes && s.attributes.friendly_name;
+      out.push({ id: id, label: this._valid(fn) ? fn : id });
+    }
+    return out;
+  }
 
   _updateCamera() {
     const host = this.shadowRoot.getElementById("camera-host");
     if (!host) return;
 
-    const hide = () => {
+    const cams = this._cameraList();
+    if (!cams.length) {
       if (host.innerHTML) host.innerHTML = "";
       this._camSrc = null;
-    };
+      return;
+    }
 
-    if (!this._config.show_camera) return hide();
+    // Clamp / wrap the selected index into range.
+    if (typeof this._camIndex !== "number" || !isFinite(this._camIndex) || this._camIndex < 0) {
+      this._camIndex = 0;
+    }
+    if (this._camIndex >= cams.length) this._camIndex = this._camIndex % cams.length;
+    const idx = this._camIndex;
+    const cam = cams[idx];
+    const multi = cams.length >= 2;
 
-    const camId = "camera." + this._config.prefix + "_machine_camera";
-    const s = this._st(camId);
-    const token = s && s.attributes ? s.attributes.access_token : null;
-    if (!s || !this._valid(token)) return hide();
-
-    const src =
-      "/api/camera_proxy_stream/" +
-      encodeURIComponent(camId) +
-      "?token=" +
-      encodeURIComponent(token);
-
+    // Build the panel skeleton ONCE so the stream <img> persists.
     let img = host.querySelector(".cam-img");
     if (!img) {
       host.innerHTML =
         '<div class="panel camera">' +
-        '<img class="cam-img" alt="Machine camera" data-action="more-info" data-arg="' +
-        this._esc(camId) +
-        '"/>' +
+        '<img class="cam-img" alt="Machine camera" data-action="more-info"/>' +
+        '<div class="cam-unavail">Camera unavailable</div>' +
+        '<div class="cam-bar">' +
+        '<span class="cam-name"></span>' +
+        '<span class="cam-spacer"></span>' +
+        '<span class="cam-dots"></span>' +
+        '<button class="cam-next" data-action="cam-next" aria-label="Next camera">' +
+        this._svgCamNext() +
+        "</button>" +
+        "</div>" +
         "</div>";
       img = host.querySelector(".cam-img");
       this._camSrc = null;
     }
-    if (img && src !== this._camSrc) {
-      img.src = src;
-      this._camSrc = src;
+
+    const nameEl = host.querySelector(".cam-name");
+    const dotsEl = host.querySelector(".cam-dots");
+    const nextEl = host.querySelector(".cam-next");
+    const unavailEl = host.querySelector(".cam-unavail");
+
+    if (nameEl) nameEl.textContent = cam.label || "";
+    img.setAttribute("data-arg", cam.id);
+
+    const s = this._st(cam.id);
+    const token = s && s.attributes ? s.attributes.access_token : null;
+    if (!s || !this._valid(token)) {
+      // Selected camera has no stream: show placeholder, keep cycling enabled.
+      img.style.display = "none";
+      if (unavailEl) unavailEl.style.display = "flex";
+      this._camSrc = null;
+    } else {
+      const src =
+        "/api/camera_proxy_stream/" +
+        encodeURIComponent(cam.id) +
+        "?token=" +
+        encodeURIComponent(token);
+      img.style.display = "block";
+      if (unavailEl) unavailEl.style.display = "none";
+      if (src !== this._camSrc) {
+        img.src = src;
+        this._camSrc = src;
+      }
+    }
+
+    // Selector (only with >= 2 cameras).
+    if (nextEl) nextEl.style.display = multi ? "inline-flex" : "none";
+    if (dotsEl) {
+      if (multi) {
+        let d = "";
+        for (let i = 0; i < cams.length; i++) {
+          d += '<span class="cam-dot' + (i === idx ? " on" : "") + '"></span>';
+        }
+        dotsEl.innerHTML = d;
+        dotsEl.style.display = "inline-flex";
+      } else {
+        dotsEl.innerHTML = "";
+        dotsEl.style.display = "none";
+      }
     }
   }
 
@@ -1108,28 +1258,42 @@ class DatronCockpitCard extends HTMLElement {
     return false;
   }
 
-  // Spec-first row: characteristics up top, translated name + article below.
-  _toolRow(t, idx, storage) {
-    const cat = this._valid(t.category) ? t.category : "";
+  // Spec pieces from a tool's nominalGeometry (values in METERS), using the
+  // same ⌀ / R / LOC / reach / FL notation as the spindle panel. No category.
+  _toolSpecPieces(t) {
     const gm = this._geomMap(t);
-
+    const cat = this._valid(t.category) ? t.category : "";
     const pieces = [];
     if (gm.Diameter != null) {
       const d = this._mmVal(gm.Diameter, 2);
-      if (d !== null) pieces.push("⌀" + d);
+      if (d !== null) pieces.push("⌀" + d + " mm");
     }
-    if (gm.NumberOfFlutes != null) {
-      const n = Number(gm.NumberOfFlutes);
-      if (isFinite(n)) pieces.push(Math.round(n) + " FL");
+    if (gm.CornerRadius != null && this._isCornerRadiusCat(cat)) {
+      const crmm = Number(gm.CornerRadius) * 1000;
+      if (isFinite(crmm) && crmm > 0) {
+        const r = this._fmtR(crmm);
+        if (r !== null) pieces.push("R" + r);
+      }
     }
     if (gm.FluteLength != null) {
       const f = this._mmVal(gm.FluteLength, 2);
-      if (f !== null) pieces.push("FL " + f);
+      if (f !== null) pieces.push("LOC " + f + " mm");
     }
     if (gm.BodyLength != null) {
       const b = this._mmVal(gm.BodyLength, 2);
-      if (b !== null) pieces.push("reach " + b);
+      if (b !== null) pieces.push("reach " + b + " mm");
     }
+    if (gm.NumberOfFlutes != null) {
+      const n = Number(gm.NumberOfFlutes);
+      if (isFinite(n)) pieces.push(Math.round(n) + "FL");
+    }
+    return pieces;
+  }
+
+  // Spec-first row: characteristics up top, translated name + article below.
+  _toolRow(t, idx, storage) {
+    const cat = this._valid(t.category) ? t.category : "";
+    const pieces = this._toolSpecPieces(t);
     const catLabel = this._translateCategory(cat);
     if (catLabel) pieces.push(catLabel);
     const spec = pieces.join(" · ") || catLabel || "Tool";
@@ -1278,6 +1442,7 @@ class DatronCockpitCard extends HTMLElement {
     const vendor = this._valid(t.vendor) ? t.vendor : "";
     const catLabel = this._translateCategory(cat);
     const gm = this._geomMap(t);
+    const specLine = this._toolSpecPieces(t).join(" · ");
 
     const lifeHtml = this._detailLifeHtml(t);
     const groupsHtml = this._detailGroupsHtml(t, gm);
@@ -1311,6 +1476,7 @@ class DatronCockpitCard extends HTMLElement {
       "</span>" +
       '<div class="det-herometa">' +
       (catLabel ? '<div class="det-cat">' + this._esc(catLabel) + "</div>" : "") +
+      (specLine ? '<div class="det-spec">' + this._esc(specLine) + "</div>" : "") +
       (lifeHtml ? '<div class="det-lives">' + lifeHtml + "</div>" : "") +
       "</div>" +
       "</div>" +
@@ -1344,6 +1510,9 @@ class DatronCockpitCard extends HTMLElement {
   }
   _svgChevronRight() {
     return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  }
+  _svgCamNext() {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11v10H4z"/><path d="M15 10l5-3v10l-5-3"/><path d="M9 9l3 3-3 3"/></svg>';
   }
   _svgChevronLeft() {
     return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
@@ -1565,10 +1734,14 @@ class DatronCockpitCard extends HTMLElement {
       /* Tool strip */
       .toolstrip { display:flex; align-items:center; gap:12px; }
       .ts-icon { display:inline-flex; color:#dcdcdc; flex-shrink:0; }
-      .ts-info { display:flex; align-items:baseline; gap:8px; min-width:0; }
-      .ts-no { font-size:15px; font-weight:600; color:#fff; flex-shrink:0; }
-      .ts-name {
-        font-size:14px; font-weight:300; color:#dcdcdc;
+      .ts-info { display:flex; flex-direction:column; gap:2px; min-width:0; }
+      .ts-spec {
+        font-size:14px; font-weight:500; color:#fff; letter-spacing:.2px;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      }
+      .ts-spec.ts-empty { font-weight:300; color:#dcdcdc; }
+      .ts-sub {
+        font-size:12px; font-weight:400; color:#9a9a9a;
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
       }
       .tfigs { display:flex; gap:18px; flex-shrink:0; }
@@ -1600,10 +1773,37 @@ class DatronCockpitCard extends HTMLElement {
         opacity:.4; cursor:not-allowed; pointer-events:none;
       }
 
-      /* Camera (persistent host, MJPEG stream) */
+      /* Camera (persistent host, MJPEG stream, one camera at a time) */
       #camera-host:not(:empty) { margin-top:8px; }
-      .camera { padding:0; overflow:hidden; }
+      .camera { padding:0; overflow:hidden; position:relative; }
       .cam-img { width:100%; display:block; cursor:pointer; background:#111; }
+      .cam-unavail {
+        display:none; align-items:center; justify-content:center;
+        width:100%; min-height:150px; box-sizing:border-box;
+        background:#111; color:#8f8f8f; font-size:14px; letter-spacing:.3px;
+      }
+      .cam-bar {
+        position:absolute; left:0; right:0; bottom:0;
+        display:flex; align-items:center; gap:10px; padding:8px 12px;
+        background:linear-gradient(0deg, rgba(0,0,0,.6), rgba(0,0,0,0));
+        pointer-events:none;
+      }
+      .cam-name {
+        font-size:13px; color:#fff; letter-spacing:.3px; min-width:0;
+        text-shadow:0 1px 2px rgba(0,0,0,.7);
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      }
+      .cam-spacer { flex:1; }
+      .cam-dots { display:inline-flex; gap:5px; align-items:center; }
+      .cam-dot { width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,.4); }
+      .cam-dot.on { background:#fff; }
+      .cam-next {
+        display:inline-flex; align-items:center; justify-content:center;
+        width:30px; height:30px; padding:0; cursor:pointer; pointer-events:auto;
+        background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.28);
+        color:#fff; border-radius:4px; transition:background .12s;
+      }
+      .cam-next:hover { background:rgba(0,0,0,.65); }
 
       /* Tool browser overlay */
       .ov-root { position:absolute; inset:0; z-index:20; }
@@ -1704,6 +1904,7 @@ class DatronCockpitCard extends HTMLElement {
       .det-ic svg { width:52px; height:52px; }
       .det-herometa { display:flex; flex-direction:column; gap:8px; min-width:0; }
       .det-cat { font-size:15px; font-weight:500; color:#ececec; }
+      .det-spec { font-size:12.5px; color:#bdbdbd; letter-spacing:.2px; }
       .det-lives { display:flex; flex-wrap:wrap; gap:6px; }
       .det-life {
         font-size:12px; color:#232323; background:${GREEN};
@@ -1795,6 +1996,7 @@ class DatronCockpitCardEditor extends HTMLElement {
       this._built = true;
     }
     this._populateMachines();
+    this._populateCameras();
     this._syncValues();
   }
 
@@ -1812,6 +2014,8 @@ class DatronCockpitCardEditor extends HTMLElement {
       '<span class="lbl">Show camera</span></label>' +
       '<label class="row cb"><input id="ed-tools" type="checkbox"/>' +
       '<span class="lbl">Show tool browser</span></label>' +
+      '<div class="row"><span class="lbl">Extra cameras</span>' +
+      '<div id="ed-cameras" class="cams"></div></div>' +
       "</div>";
     const onChange = () => this._emit();
     const pref = this.shadowRoot.getElementById("ed-prefix");
@@ -1822,6 +2026,78 @@ class DatronCockpitCardEditor extends HTMLElement {
     if (title) title.addEventListener("input", onChange);
     if (cam) cam.addEventListener("change", onChange);
     if (tools) tools.addEventListener("change", onChange);
+    // Delegated handler for the dynamically-built extra-camera checkboxes.
+    this.shadowRoot.addEventListener("change", (ev) => {
+      const t = ev.target;
+      if (t && t.classList && t.classList.contains("ed-cam")) this._emit();
+    });
+  }
+
+  _cameraOptions() {
+    const out = [];
+    const states = (this._hass && this._hass.states) || null;
+    const prefix = (this._config && this._config.prefix) || "";
+    const machineId = prefix ? "camera." + prefix + "_machine_camera" : "";
+    if (states) {
+      for (const id in states) {
+        if (id.indexOf("camera.") !== 0) continue;
+        if (id === machineId) continue;
+        const s = states[id];
+        const fn = s && s.attributes && s.attributes.friendly_name;
+        out.push({ id: id, label: fn || id });
+      }
+    }
+    out.sort((a, b) => a.label.localeCompare(b.label));
+    return out;
+  }
+
+  _populateCameras() {
+    const wrap = this.shadowRoot.getElementById("ed-cameras");
+    if (!wrap) return;
+    const selected = Array.isArray(this._config.extra_cameras)
+      ? this._config.extra_cameras
+      : [];
+    const selSet = {};
+    for (let i = 0; i < selected.length; i++) selSet[selected[i]] = true;
+
+    const cams = this._cameraOptions();
+    // Keep any selected-but-currently-missing entities so they are not dropped.
+    for (let i = 0; i < selected.length; i++) {
+      const id = selected[i];
+      let found = false;
+      for (let j = 0; j < cams.length; j++) {
+        if (cams[j].id === id) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) cams.push({ id: id, label: id });
+    }
+
+    // Avoid needless rebuilds (which would drop focus) unless something changed.
+    const sig =
+      cams.map((c) => c.id).join(",") + "|" + selected.join(",");
+    if (wrap.dataset.sig === sig) return;
+    wrap.dataset.sig = sig;
+
+    if (!cams.length) {
+      wrap.innerHTML =
+        '<div class="cams-empty">No other camera entities found</div>';
+      return;
+    }
+    let html = "";
+    for (let i = 0; i < cams.length; i++) {
+      const c = cams[i];
+      html +=
+        '<label class="camrow"><input type="checkbox" class="ed-cam" value="' +
+        this._esc(c.id) +
+        '"' +
+        (selSet[c.id] ? " checked" : "") +
+        "/><span class=\"camlbl\">" +
+        this._esc(c.label) +
+        "</span></label>";
+    }
+    wrap.innerHTML = html;
   }
 
   _populateMachines() {
@@ -1882,6 +2158,14 @@ class DatronCockpitCardEditor extends HTMLElement {
     else delete cfg.title;
     cfg.show_camera = cam ? cam.checked : true;
     cfg.show_tools = tools ? tools.checked : true;
+    // Collect checked extra cameras in DOM (sorted) order.
+    const boxes = this.shadowRoot.querySelectorAll(".ed-cam");
+    const extra = [];
+    for (let i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked) extra.push(boxes[i].value);
+    }
+    if (extra.length) cfg.extra_cameras = extra;
+    else delete cfg.extra_cameras;
     this._config = cfg;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
@@ -1918,6 +2202,15 @@ class DatronCockpitCardEditor extends HTMLElement {
       }
       .ctl:focus { border-color:${GREEN}; }
       input[type=checkbox] { width:18px; height:18px; accent-color:${GREEN}; cursor:pointer; }
+      .cams {
+        display:flex; flex-direction:column; gap:8px;
+        max-height:190px; overflow-y:auto;
+        border:1px solid var(--divider-color,#c7c7c7); border-radius:4px;
+        padding:8px 10px; background:var(--card-background-color,#fff);
+      }
+      .camrow { display:flex; align-items:center; gap:8px; cursor:pointer; }
+      .camlbl { font-size:13px; color:var(--primary-text-color,#212121); }
+      .cams-empty { font-size:13px; color:var(--secondary-text-color,#8a8a8a); }
     `;
   }
 }

@@ -445,6 +445,11 @@ MEDIUM_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
                 _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "Diameter")
                 or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "Diameter")
             ),
+            # Corner radius (bullnose / corner-radius end mills); None when absent
+            "corner_radius_mm": (
+                _get_geometry_mm(_safe_get(d, "tool_spindle"), "realGeometry", "CornerRadius")
+                or _get_geometry_mm(_safe_get(d, "tool_spindle"), "nominalGeometry", "CornerRadius")
+            ),
             # Dimensionless — no conversion needed
             "number_of_flutes": (
                 _get_geometry_value(_safe_get(d, "tool_spindle"), "realGeometry", "NumberOfFlutes")
