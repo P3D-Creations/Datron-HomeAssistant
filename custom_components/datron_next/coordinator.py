@@ -22,6 +22,63 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+class _NotificationStamper:
+    """Assign a receipt timestamp and id to notifications.
+
+    The machine returns a sliding window of the last ~100 notifications
+    (oldest first, no timestamp, no id) and gives us nothing to key on. We
+    approximate: on each poll, align the new list against the previous one by
+    the longest overlap of its head with our known tail, carry stamps for the
+    retained entries, and stamp the newly appended tail with the current time.
+    Repeated identical messages can misalign; per the user this is acceptable.
+    """
+
+    def __init__(self) -> None:
+        self._prev: list[dict[str, Any]] = []
+        self._counter = 0
+
+    @staticmethod
+    def _key(item: dict[str, Any]) -> tuple[Any, Any]:
+        return (item.get("type"), item.get("message"))
+
+    def stamp(self, raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from homeassistant.util import dt as dt_util
+
+        items = [n for n in raw if isinstance(n, dict)]
+        now_iso = dt_util.utcnow().isoformat()
+        new_keys = [self._key(n) for n in items]
+        prev_keys = [self._key(p) for p in self._prev]
+
+        # Largest L such that our previous tail equals the new head.
+        overlap = 0
+        for cand in range(min(len(prev_keys), len(new_keys)), -1, -1):
+            if prev_keys[len(prev_keys) - cand:] == new_keys[:cand]:
+                overlap = cand
+                break
+        retained = self._prev[len(self._prev) - overlap:] if overlap else []
+
+        out: list[dict[str, Any]] = []
+        for i, n in enumerate(items):
+            if i < overlap:
+                prior = retained[i]
+                ts = prior.get("ts", now_iso)
+                nid = prior.get("id")
+            else:
+                self._counter += 1
+                ts = now_iso
+                nid = f"{now_iso}-{self._counter}"
+            out.append(
+                {
+                    "type": n.get("type"),
+                    "message": n.get("message"),
+                    "ts": ts,
+                    "id": nid,
+                }
+            )
+        self._prev = out
+        return out
+
+
 def _tool_article(tool: dict[str, Any]) -> str | None:
     """Normalised article number (EDP / product ID), or None when unset."""
     art = tool.get("articleNumber")
@@ -196,6 +253,7 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=SCAN_INTERVAL_FAST),
         )
         self.client = client
+        self._notif_stamper = _NotificationStamper()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch fast-polling data from the API."""
@@ -232,6 +290,14 @@ class DatronFastCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 else:
                     _LOGGER.debug("[COORD] Fast poll: Success for %s", key)
                     data[key] = result
+
+            # Assign receipt timestamps + ids to notifications (newest at the
+            # end). Only when a fresh list arrived; a failed fetch kept the
+            # previous stamped value above.
+            if isinstance(data.get("notifications"), list):
+                data["notifications"] = self._notif_stamper.stamp(
+                    data["notifications"]
+                )
 
             # Log raw response structure on first successful fetch
             if not self.data:

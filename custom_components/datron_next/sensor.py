@@ -367,7 +367,8 @@ FAST_SENSORS: tuple[DatronSensorEntityDescription, ...] = (
         value_fn=lambda d: next(
             (
                 n.get("message", "Unknown error")
-                for n in (_safe_get(d, "notifications", default=[]) or [])
+                # Newest first: machine appends newest at the end.
+                for n in reversed(_safe_get(d, "notifications", default=[]) or [])
                 if isinstance(n, dict) and n.get("type") == "Error"
             ),
             "None",

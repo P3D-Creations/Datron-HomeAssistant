@@ -234,12 +234,10 @@ def _get_client(hass: HomeAssistant) -> DatronApiClient:
     return _entry_data(hass)["client"]
 
 
-def _client_for_device(hass: HomeAssistant, device_id: str | None) -> DatronApiClient:
-    """Return the client for *device_id*'s entry, or the first entry's client.
-
-    Lets a service target a specific machine when several Datron entries exist;
-    falls back to the first entry (single-machine setups need not pass one).
-    """
+def _entry_data_for_device(
+    hass: HomeAssistant, device_id: str | None
+) -> dict[str, Any]:
+    """Return the entry data dict for *device_id*, or the first entry's."""
     if device_id:
         from homeassistant.helpers import device_registry as dr
 
@@ -248,8 +246,17 @@ def _client_for_device(hass: HomeAssistant, device_id: str | None) -> DatronApiC
             for entry_id in device.config_entries:
                 data = hass.data.get(DOMAIN, {}).get(entry_id)
                 if isinstance(data, dict) and "client" in data:
-                    return data["client"]
-    return _get_client(hass)
+                    return data
+    return _entry_data(hass)
+
+
+def _client_for_device(hass: HomeAssistant, device_id: str | None) -> DatronApiClient:
+    """Return the client for *device_id*'s entry, or the first entry's client.
+
+    Lets a service target a specific machine when several Datron entries exist;
+    falls back to the first entry (single-machine setups need not pass one).
+    """
+    return _entry_data_for_device(hass, device_id)["client"]
 
 
 def _get_fast_coordinator(hass: HomeAssistant) -> DatronFastCoordinator:
@@ -622,15 +629,14 @@ def _register_services(hass: HomeAssistant) -> None:
     async def handle_get_notifications(call: ServiceCall) -> dict:
         """Return the machine's notification history (for the card dropdown).
 
-        Read-only; returns ``{count, notifications: [{type, message}, ...]}``
-        newest-first. device_id (optional) targets a specific machine.
+        Read-only; returns ``{count, notifications: [{type, message, ts, id}]}``
+        oldest-first (machine order; the card shows newest at the top). Served
+        from the fast coordinator's already-polled and timestamped data, so no
+        extra machine request. device_id (optional) targets a machine.
         """
-        client = _client_for_device(hass, call.data.get("device_id"))
-        try:
-            items = await client.get_notifications()
-        except DatronApiError as err:
-            _LOGGER.error("get_notifications error: %s", err)
-            raise
+        data = _entry_data_for_device(hass, call.data.get("device_id"))
+        coord = data.get(COORD_FAST)
+        items = (coord.data or {}).get("notifications") if coord else None
         notifications = items if isinstance(items, list) else []
         return {"count": len(notifications), "notifications": notifications}
 

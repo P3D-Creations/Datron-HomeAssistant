@@ -621,6 +621,16 @@ class DatronCockpitCard extends HTMLElement {
     return n.message || n.text || n.caption || n.title || "";
   }
 
+  // Receipt time (hh:mm, local) from the integration's `ts` field; "" if absent.
+  _notifTime(n) {
+    const ts = n && n.ts;
+    if (!ts) return "";
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "";
+    const p = (x) => (x < 10 ? "0" + x : "" + x);
+    return p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+
   _renderNotifDropdown() {
     const status = this._notifStatus;
     if (status === "loading") {
@@ -639,6 +649,9 @@ class DatronCockpitCard extends HTMLElement {
         (n) => this._notifType(n).toLowerCase() !== "temporary"
       );
     }
+    // Machine returns notifications oldest-first (newest appended at the end);
+    // show newest at the top. list is our own array, safe to reverse in place.
+    list.reverse();
     const capped = list.slice(0, 60);
 
     const head =
@@ -676,6 +689,9 @@ class DatronCockpitCard extends HTMLElement {
           '"></span>' +
           '<span class="notif-itxt">' +
           this._esc(this._notifMsg(n)) +
+          "</span>" +
+          '<span class="notif-time">' +
+          this._esc(this._notifTime(n)) +
           "</span>" +
           "</div>";
       }
@@ -1951,8 +1967,12 @@ class DatronCockpitCard extends HTMLElement {
       .notif-dot {
         width:9px; height:9px; border-radius:50%; margin-top:5px; flex-shrink:0;
       }
-      .notif-itxt { font-size:13px; color:#e2e2e2; line-height:1.35; word-break:break-word; }
+      .notif-itxt { flex:1; font-size:13px; color:#e2e2e2; line-height:1.35; word-break:break-word; }
       .notif-item.temp .notif-itxt { color:#b5b5b5; }
+      .notif-time {
+        flex-shrink:0; margin-top:1px; font-size:11px; color:#8f8f8f;
+        font-variant-numeric:tabular-nums;
+      }
       .notif-msg2 { padding:16px 12px; text-align:center; color:#9a9a9a; font-size:13px; }
 
       /* Dialog */
