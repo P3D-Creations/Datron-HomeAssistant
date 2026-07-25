@@ -79,7 +79,10 @@ async def _async_register_frontend_card(hass: HomeAssistant) -> None:
         from homeassistant.components.http import StaticPathConfig
 
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(CARD_URL, CARD_PATH, False)]
+            # cache_headers=True: the URL is version-busted (?v=<version>), so
+            # long-cache is safe and lets the Companion app webview keep the
+            # module across cold starts instead of racing to refetch it.
+            [StaticPathConfig(CARD_URL, CARD_PATH, True)]
         )
     except Exception as err:  # noqa: BLE001 — never block setup on the card
         _LOGGER.debug("Could not register cockpit card static path: %s", err)
@@ -104,8 +107,55 @@ async def _async_register_frontend_card(hass: HomeAssistant) -> None:
         _LOGGER.debug("Could not auto-load cockpit card JS (%s); a manual "
                       "Lovelace resource for %s still works", err, CARD_URL)
 
+    # Also register a Lovelace resource on storage-mode dashboards. Same URL as
+    # add_extra_js_url, so the browser dedupes the import, but this adds the
+    # dashboard resource-loader path, which tends to be more reliable in the
+    # Companion app than the global extra-module injection.
+    await _async_register_lovelace_resource(hass, url)
+
     hass.data[_CARD_REGISTERED_KEY] = True
     _LOGGER.debug("Cockpit card served and auto-loaded from %s", url)
+
+
+async def _async_register_lovelace_resource(hass: HomeAssistant, url: str) -> None:
+    """Add/refresh the card as a Lovelace resource (storage mode only).
+
+    Best-effort: YAML-mode dashboards manage resources in configuration.yaml,
+    and the resource-collection API has shifted across HA versions, so any
+    failure is logged and ignored — add_extra_js_url still covers loading.
+    Keeps a single resource, updating its URL when the version changes.
+    """
+    base = url.split("?", 1)[0]
+    try:
+        lovelace = hass.data.get("lovelace")
+        mode = getattr(lovelace, "mode", None)
+        resources = getattr(lovelace, "resources", None)
+        if mode != "storage" or resources is None:
+            return
+        # Ensure the collection is loaded before reading/writing.
+        if not getattr(resources, "loaded", False):
+            if hasattr(resources, "async_load"):
+                await resources.async_load()
+            elif hasattr(resources, "async_get_info"):
+                await resources.async_get_info()
+
+        items = list(resources.async_items())
+        existing = next(
+            (
+                it
+                for it in items
+                if str(it.get("url", "")).split("?", 1)[0] == base
+            ),
+            None,
+        )
+        if existing is None:
+            await resources.async_create_item({"res_type": "module", "url": url})
+            _LOGGER.debug("Added Lovelace resource %s", url)
+        elif existing.get("url") != url:
+            await resources.async_update_item(existing["id"], {"url": url})
+            _LOGGER.debug("Updated Lovelace resource to %s", url)
+    except Exception as err:  # noqa: BLE001 — never block setup on the resource
+        _LOGGER.debug("Could not register Lovelace resource (%s): %s", base, err)
 
 
 _TOOL_IMAGE_VIEW_KEY = f"{DOMAIN}_tool_image_view"
