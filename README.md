@@ -81,11 +81,15 @@ extra_cameras:                  # optional, cycled one at a time
   - camera.shop_overhead
 ```
 
-A visual editor covers all options, including a machine picker for
-multi-machine installs. The card includes the notification history dropdown,
+A visual editor covers all options using Home Assistant's standard device and
+entity pickers. The card includes the notification history dropdown,
 dialog buttons mirroring the machine, a tool browser (magazine/warehouse/
 program tools with search and per-tool detail), and the camera stream.
 See [custom_components/datron_next/www/README-cockpit-card.md](custom_components/datron_next/www/README-cockpit-card.md).
+
+If the card intermittently showed a bare "Configuration error" on load, update
+to card 1.8.0 or later (the element was defined before Home Assistant's scoped
+element registry was installed) and hard-refresh the browser.
 
 ## Installation
 

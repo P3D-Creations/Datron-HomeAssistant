@@ -13,8 +13,9 @@ needed. Fallback options if auto-load is unavailable:
 
 ## Configuration
 
-A visual editor is provided (machine picker, title, remaining-time source,
-camera and tool-browser toggles, extra-camera checklist). YAML equivalent:
+A visual editor is provided, built on Home Assistant's standard form and
+pickers: machine (device picker, sets `prefix`), title, remaining-time source,
+camera and tool-browser toggles, extra cameras (entity picker). YAML equivalent:
 
 ```yaml
 type: custom:datron-cockpit-card

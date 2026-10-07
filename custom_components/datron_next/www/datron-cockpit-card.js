@@ -6,7 +6,7 @@
  * No build step, no external dependencies. Loaded by HA as an ES module.
  */
 
-const CARD_VERSION = "1.7.1";
+const CARD_VERSION = "1.8.0";
 
 console.info(
   "%c DATRON-COCKPIT-CARD %c v" + CARD_VERSION + " ",
@@ -2309,289 +2309,158 @@ class DatronCockpitCard extends HTMLElement {
 }
 
 // ---- Visual configuration editor ---------------------------------------
+// Built on HA's own <ha-form> with native selectors (device picker filtered
+// to this integration, entity pickers for cameras), so it matches built-in
+// card editors and tracks frontend changes without custom widget code.
+
+const INTEGRATION = "datron_next";
+const MACHINE_NUMBER_SUFFIX = "_machine_number";
+
+const EDITOR_LABELS = {
+  device: "Machine",
+  title: "Title",
+  timer_source: "Remaining time source",
+  show_camera: "Show camera",
+  show_tools: "Show tool browser",
+  extra_cameras: "Extra cameras",
+};
 
 class DatronCockpitCardEditor extends HTMLElement {
   constructor() {
     super();
     this._hass = null;
     this._config = {};
-    this._built = false;
-    this.attachShadow({ mode: "open" });
+    this._form = null;
   }
 
   setConfig(config) {
     this._config = Object.assign({}, config || {});
-    this._render();
+    this._update();
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    this._update();
   }
 
-  _machines() {
-    const out = [];
-    const states = (this._hass && this._hass.states) || null;
-    if (!states) return out;
-    for (const id in states) {
-      const m = /^sensor\.(.+)_machine_number$/.exec(id);
-      if (!m) continue;
-      const prefix = m[1];
-      let label = null;
-      const typeS = states["sensor." + prefix + "_machine_type"];
-      const statusS = states["sensor." + prefix + "_status"];
-      if (typeS && typeS.attributes && typeS.attributes.friendly_name)
-        label = typeS.attributes.friendly_name;
-      else if (statusS && statusS.attributes && statusS.attributes.friendly_name)
-        label = statusS.attributes.friendly_name;
-      else if (states[id] && states[id].state) label = states[id].state;
-      // Trim the per-entity suffix so the picker reads like the device name,
-      // e.g. "Datron M8Cube (1804685) Machine Type" -> "Datron M8Cube (1804685)".
-      if (label)
-        label = label.replace(/\s+(Machine Type|Status|Machine Number)$/i, "").trim();
-      out.push({ prefix: prefix, label: label || prefix });
+  connectedCallback() {
+    if (this._form) return;
+    // ha-form is lazy-loaded by HA; loading a built-in card's editor pulls it
+    // (and the selectors) in when no other editor has done so yet.
+    if (!customElements.get("ha-form") && window.loadCardHelpers) {
+      window
+        .loadCardHelpers()
+        .then((h) => h.createCardElement({ type: "entities", entities: [] }))
+        .then((c) => c && c.constructor.getConfigElement && c.constructor.getConfigElement())
+        .catch(() => {});
     }
-    out.sort((a, b) => a.label.localeCompare(b.label));
-    return out;
-  }
-
-  _render() {
-    if (!this.shadowRoot) return;
-    if (!this._built) {
-      this._buildForm();
-      this._built = true;
-    }
-    this._populateMachines();
-    this._populateCameras();
-    this._syncValues();
-  }
-
-  _buildForm() {
-    this.shadowRoot.innerHTML =
-      "<style>" +
-      this._css() +
-      "</style>" +
-      '<div class="ed">' +
-      '<label class="row"><span class="lbl">Machine</span>' +
-      '<select id="ed-prefix" class="ctl"></select></label>' +
-      '<label class="row"><span class="lbl">Title</span>' +
-      '<input id="ed-title" class="ctl" type="text" placeholder="Optional header title"/></label>' +
-      '<label class="row"><span class="lbl">Remaining time source</span>' +
-      '<select id="ed-timer" class="ctl">' +
-      '<option value="machine">Machine</option>' +
-      '<option value="estimated">Estimated</option>' +
-      '<option value="both">Both</option>' +
-      "</select></label>" +
-      '<label class="row cb"><input id="ed-camera" type="checkbox"/>' +
-      '<span class="lbl">Show camera</span></label>' +
-      '<label class="row cb"><input id="ed-tools" type="checkbox"/>' +
-      '<span class="lbl">Show tool browser</span></label>' +
-      '<div class="row"><span class="lbl">Extra cameras</span>' +
-      '<div id="ed-cameras" class="cams"></div></div>' +
-      "</div>";
-    const onChange = () => this._emit();
-    const pref = this.shadowRoot.getElementById("ed-prefix");
-    const title = this.shadowRoot.getElementById("ed-title");
-    const timer = this.shadowRoot.getElementById("ed-timer");
-    const cam = this.shadowRoot.getElementById("ed-camera");
-    const tools = this.shadowRoot.getElementById("ed-tools");
-    if (pref) pref.addEventListener("change", onChange);
-    if (title) title.addEventListener("input", onChange);
-    if (timer) timer.addEventListener("change", onChange);
-    if (cam) cam.addEventListener("change", onChange);
-    if (tools) tools.addEventListener("change", onChange);
-    // Delegated handler for the dynamically-built extra-camera checkboxes.
-    this.shadowRoot.addEventListener("change", (ev) => {
-      const t = ev.target;
-      if (t && t.classList && t.classList.contains("ed-cam")) this._emit();
+    customElements.whenDefined("ha-form").then(() => {
+      if (this._form) return;
+      const form = document.createElement("ha-form");
+      form.computeLabel = (s) => EDITOR_LABELS[s.name] || s.name;
+      form.addEventListener("value-changed", (ev) => this._valueChanged(ev));
+      this._form = form;
+      this.appendChild(form);
+      this._update();
     });
   }
 
-  _cameraOptions() {
-    const out = [];
-    const states = (this._hass && this._hass.states) || null;
-    const prefix = (this._config && this._config.prefix) || "";
-    const machineId = prefix ? "camera." + prefix + "_machine_camera" : "";
-    if (states) {
-      for (const id in states) {
-        if (id.indexOf("camera.") !== 0) continue;
-        if (id === machineId) continue;
-        const s = states[id];
-        const fn = s && s.attributes && s.attributes.friendly_name;
-        out.push({ id: id, label: fn || id });
-      }
-    }
-    out.sort((a, b) => a.label.localeCompare(b.label));
-    return out;
+  _schema() {
+    const prefix = this._config.prefix || "";
+    return [
+      { name: "device", selector: { device: { filter: { integration: INTEGRATION } } } },
+      { name: "title", selector: { text: {} } },
+      {
+        name: "timer_source",
+        required: true,
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "machine", label: "Machine" },
+              { value: "estimated", label: "Estimated" },
+              { value: "both", label: "Both" },
+            ],
+          },
+        },
+      },
+      {
+        type: "grid",
+        name: "",
+        schema: [
+          { name: "show_camera", selector: { boolean: {} } },
+          { name: "show_tools", selector: { boolean: {} } },
+        ],
+      },
+      {
+        name: "extra_cameras",
+        selector: {
+          entity: {
+            multiple: true,
+            filter: { domain: "camera" },
+            exclude_entities: prefix ? ["camera." + prefix + "_machine_camera"] : [],
+          },
+        },
+      },
+    ];
   }
 
-  _populateCameras() {
-    const wrap = this.shadowRoot.getElementById("ed-cameras");
-    if (!wrap) return;
-    const selected = Array.isArray(this._config.extra_cameras)
-      ? this._config.extra_cameras
-      : [];
-    const selSet = {};
-    for (let i = 0; i < selected.length; i++) selSet[selected[i]] = true;
-
-    const cams = this._cameraOptions();
-    // Keep any selected-but-currently-missing entities so they are not dropped.
-    for (let i = 0; i < selected.length; i++) {
-      const id = selected[i];
-      let found = false;
-      for (let j = 0; j < cams.length; j++) {
-        if (cams[j].id === id) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) cams.push({ id: id, label: id });
-    }
-
-    // Avoid needless rebuilds (which would drop focus) unless something changed.
-    const sig =
-      cams.map((c) => c.id).join(",") + "|" + selected.join(",");
-    if (wrap.dataset.sig === sig) return;
-    wrap.dataset.sig = sig;
-
-    if (!cams.length) {
-      wrap.innerHTML =
-        '<div class="cams-empty">No other camera entities found</div>';
-      return;
-    }
-    let html = "";
-    for (let i = 0; i < cams.length; i++) {
-      const c = cams[i];
-      html +=
-        '<label class="camrow"><input type="checkbox" class="ed-cam" value="' +
-        this._esc(c.id) +
-        '"' +
-        (selSet[c.id] ? " checked" : "") +
-        "/><span class=\"camlbl\">" +
-        this._esc(c.label) +
-        "</span></label>";
-    }
-    wrap.innerHTML = html;
+  _update() {
+    if (!this._form) return;
+    const cfg = this._config;
+    this._form.hass = this._hass;
+    this._form.schema = this._schema();
+    const data = Object.assign({}, cfg, {
+      timer_source: cfg.timer_source || "machine",
+      show_camera: cfg.show_camera !== false,
+      show_tools: cfg.show_tools !== false,
+    });
+    const dev = this._deviceForPrefix(cfg.prefix);
+    if (dev) data.device = dev;
+    this._form.data = data;
   }
 
-  _populateMachines() {
-    const sel = this.shadowRoot.getElementById("ed-prefix");
-    if (!sel) return;
-    const machines = this._machines();
-    const current = this._config.prefix || "";
-    let hasCurrent = false;
-    let html = "";
-    for (let i = 0; i < machines.length; i++) {
-      if (machines[i].prefix === current) hasCurrent = true;
-      html +=
-        '<option value="' +
-        this._esc(machines[i].prefix) +
-        '">' +
-        this._esc(machines[i].label) +
-        "</option>";
-    }
-    // Keep the configured prefix selectable even if not discoverable yet.
-    if (current && !hasCurrent) {
-      html =
-        '<option value="' +
-        this._esc(current) +
-        '">' +
-        this._esc(current) +
-        "</option>" +
-        html;
-    }
-    if (!machines.length && !current) {
-      html = '<option value="">No machines found</option>';
-    }
-    sel.innerHTML = html;
-    if (current) sel.value = current;
+  // machine device <-> prefix, via the entity registry
+  _deviceForPrefix(prefix) {
+    const ents = this._hass && this._hass.entities;
+    if (!prefix || !ents) return undefined;
+    const ent = ents["sensor." + prefix + MACHINE_NUMBER_SUFFIX];
+    return (ent && ent.device_id) || undefined;
   }
 
-  _syncValues() {
-    const cfg = this._config || {};
-    const active = this.shadowRoot.activeElement;
-    const title = this.shadowRoot.getElementById("ed-title");
-    const timer = this.shadowRoot.getElementById("ed-timer");
-    const cam = this.shadowRoot.getElementById("ed-camera");
-    const tools = this.shadowRoot.getElementById("ed-tools");
-    const pref = this.shadowRoot.getElementById("ed-prefix");
-    if (pref && pref !== active && cfg.prefix) pref.value = cfg.prefix;
-    if (title && title !== active) title.value = cfg.title || "";
-    if (timer && timer !== active) timer.value = cfg.timer_source || "machine";
-    if (cam && cam !== active) cam.checked = cfg.show_camera !== false;
-    if (tools && tools !== active) tools.checked = cfg.show_tools !== false;
+  _prefixForDevice(deviceId) {
+    const ents = this._hass && this._hass.entities;
+    if (!deviceId || !ents) return "";
+    for (const id in ents) {
+      if (ents[id].device_id !== deviceId) continue;
+      const m = /^sensor\.(.+)_machine_number$/.exec(id);
+      if (m) return m[1];
+    }
+    return "";
   }
 
-  _emit() {
-    const cfg = Object.assign({}, this._config);
-    const pref = this.shadowRoot.getElementById("ed-prefix");
-    const title = this.shadowRoot.getElementById("ed-title");
-    const cam = this.shadowRoot.getElementById("ed-camera");
-    const tools = this.shadowRoot.getElementById("ed-tools");
-    if (pref && pref.value) cfg.prefix = pref.value;
-    const tv = title ? (title.value || "").trim() : "";
-    if (tv) cfg.title = tv;
-    else delete cfg.title;
-    const timer = this.shadowRoot.getElementById("ed-timer");
-    const ts = timer ? timer.value : "machine";
-    if (ts && ts !== "machine") cfg.timer_source = ts;
-    else delete cfg.timer_source;
-    cfg.show_camera = cam ? cam.checked : true;
-    cfg.show_tools = tools ? tools.checked : true;
-    // Collect checked extra cameras in DOM (sorted) order.
-    const boxes = this.shadowRoot.querySelectorAll(".ed-cam");
-    const extra = [];
-    for (let i = 0; i < boxes.length; i++) {
-      if (boxes[i].checked) extra.push(boxes[i].value);
+  _valueChanged(ev) {
+    ev.stopPropagation();
+    const value = Object.assign({}, ev.detail.value);
+    if (value.device !== this._deviceForPrefix(this._config.prefix)) {
+      const prefix = this._prefixForDevice(value.device);
+      if (prefix) value.prefix = prefix;
     }
-    if (extra.length) cfg.extra_cameras = extra;
-    else delete cfg.extra_cameras;
-    this._config = cfg;
+    delete value.device;
+    // keep YAML minimal: drop defaults and empty values
+    if (value.timer_source === "machine") delete value.timer_source;
+    if (Array.isArray(value.extra_cameras) && !value.extra_cameras.length) delete value.extra_cameras;
+    for (const k in value) {
+      if (value[k] === undefined || value[k] === null || value[k] === "") delete value[k];
+    }
+    this._config = value;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
-        detail: { config: cfg },
+        detail: { config: Object.assign({}, value) },
         bubbles: true,
         composed: true,
       })
     );
-  }
-
-  _esc(str) {
-    if (str === null || str === undefined) return "";
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
-  _css() {
-    return `
-      :host { display:block; }
-      .ed { display:flex; flex-direction:column; gap:14px; padding:4px 2px; }
-      .row { display:flex; flex-direction:column; gap:6px; }
-      .row.cb { flex-direction:row; align-items:center; gap:10px; }
-      .lbl { font-size:13px; color:var(--secondary-text-color,#8a8a8a); font-weight:500; }
-      .row.cb .lbl { color:var(--primary-text-color,#212121); font-weight:400; font-size:14px; }
-      .ctl {
-        width:100%; box-sizing:border-box; padding:9px 10px; font-size:14px;
-        border-radius:4px; border:1px solid var(--divider-color,#c7c7c7);
-        background:var(--card-background-color,#fff);
-        color:var(--primary-text-color,#212121); outline:none;
-      }
-      .ctl:focus { border-color:${GREEN}; }
-      input[type=checkbox] { width:18px; height:18px; accent-color:${GREEN}; cursor:pointer; }
-      .cams {
-        display:flex; flex-direction:column; gap:8px;
-        max-height:190px; overflow-y:auto;
-        border:1px solid var(--divider-color,#c7c7c7); border-radius:4px;
-        padding:8px 10px; background:var(--card-background-color,#fff);
-      }
-      .camrow { display:flex; align-items:center; gap:8px; cursor:pointer; }
-      .camlbl { font-size:13px; color:var(--primary-text-color,#212121); }
-      .cams-empty { font-size:13px; color:var(--secondary-text-color,#8a8a8a); }
-    `;
   }
 }
 
