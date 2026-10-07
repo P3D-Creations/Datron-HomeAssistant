@@ -6,7 +6,7 @@
  * No build step, no external dependencies. Loaded by HA as an ES module.
  */
 
-const CARD_VERSION = "1.7.0";
+const CARD_VERSION = "1.7.1";
 
 console.info(
   "%c DATRON-COCKPIT-CARD %c v" + CARD_VERSION + " ",
@@ -2595,12 +2595,33 @@ class DatronCockpitCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get("datron-cockpit-card-editor")) {
-  customElements.define("datron-cockpit-card-editor", DatronCockpitCardEditor);
-}
+// ---- Registration ----------------------------------------------------------
+// HA's app bundle installs the scoped custom-element-registry polyfill, which
+// replaces window.customElements with a fresh registry that ignores anything
+// defined natively before it. This module can run before app.js; defining
+// then makes HA report "Custom element doesn't exist" (shown as a bare
+// "Configuration error") until a lucky reload. So define only once the
+// polyfill is in place, or once HA's root element exists (frontends without
+// the polyfill). The polyfill re-parents classes created before it, so only
+// the define calls need deferring.
 
-if (!customElements.get("datron-cockpit-card")) {
-  customElements.define("datron-cockpit-card", DatronCockpitCard);
+const nativeRegistry = window.customElements;
+let registered = false;
+function registerElements() {
+  if (registered) return;
+  registered = true;
+  if (!customElements.get("datron-cockpit-card-editor")) {
+    customElements.define("datron-cockpit-card-editor", DatronCockpitCardEditor);
+  }
+  if (!customElements.get("datron-cockpit-card")) {
+    customElements.define("datron-cockpit-card", DatronCockpitCard);
+  }
+}
+if (window.CustomElementRegistryPolyfill) {
+  registerElements();
+} else {
+  nativeRegistry.whenDefined("home-assistant").then(registerElements);
+  nativeRegistry.whenDefined("hc-main").then(registerElements); // cast receiver
 }
 
 window.customCards = window.customCards || [];
